@@ -323,14 +323,13 @@ class DQN:
         video.close()
         return rewards
 
-
-if __name__ == "__main__":
+def main():
     """
     Here we initialize the environment, agent and train the agent.
     If you want to load a model, uncomment the load_model line.
     If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
     """
-    
+
     #os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
     
     env = gym.make('CartPole-v0')
@@ -340,4 +339,6 @@ if __name__ == "__main__":
     # dqn_agent.load_model("basic_models/time_step4/dqn_basic_episode50_time_step4.h5")
     rewards = dqn_agent.test(render=False) # For some reason render=True doesn't work
     print(f"Total rewards: {rewards}. Take a look at tensorboard for more info.")
-   
+
+if __name__ == "__main__":
+    main()
