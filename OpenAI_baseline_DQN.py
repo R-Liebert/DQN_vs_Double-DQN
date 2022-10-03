@@ -181,7 +181,7 @@ class DQN:
 
 
 if __name__ == "__main__":
-    #os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 
+    #os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
     
     env = gym.make('CartPole-v0')
     env._max_episode_steps = 500
