@@ -36,6 +36,8 @@ class DQN:
             epsilon_decay=0.995,
             epsilon_min=0.01,
             learning_rate=0.005,
+            hidden_layers=1,
+            hidden_layer_size=24,
             batch_size=32,
             tau=0.125
     ):
@@ -50,6 +52,8 @@ class DQN:
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay  # exponential decay
         self.learning_rate = learning_rate
+        self.hidden_layers = hidden_layers # number of hidden layers
+        self.hidden_layer_size = hidden_layer_size # number of nodes in each hidden layer
         self.batch_size = batch_size
         self.tau = tau  # target model update
 
@@ -58,16 +62,40 @@ class DQN:
         self.summaries = {}
 
     def create_model(self):
+        """
+        Create model with Dense layers only.
+        
+        Arguments:
+        ----------
+        None
+
+        Returns:
+        --------
+        model: keras model
+        """
+
         model = Sequential()
         model.add(Dense(24, input_dim=self.state_shape[0]*self.time_steps, activation="relu"))
-        model.add(Dense(16, activation="relu"))
-        # model.add(Dense(24, activation="relu"))
+        for i in range(self.hidden_layers):
+            model.add(Dense(self.hidden_layer_size, activation="relu"))
         model.add(Dense(self.env.action_space.n))
         model.compile(loss="mean_squared_error", optimizer=Adam(lr=self.learning_rate))
         return model
     
     def update_states(self, new_state):
-        # move the oldest state to the end of array and replace with new state
+        """
+        Update stored states with new state. The new state is added to the end of the stored states and the first state is removed.
+
+        Arguments:
+        ----------
+        new_state: np.array, mandatory
+        new state to be added to stored states
+
+        Returns:
+        --------
+        None
+        """
+
         self.stored_states = np.roll(self.stored_states, -1, axis=0)
         new_state = np.asarray(new_state)
         new_state = new_state.flatten()
@@ -79,6 +107,20 @@ class DQN:
         self.stored_states[-1] = new_state
 
     def act(self, test=False): 
+        """
+        Choose action based on epsilon-greedy policy.
+
+        Arguments:
+        ----------
+        test: bool, optional
+        if True, choose action with highest Q-value
+
+        Returns:
+        --------
+        action: int
+        action to be taken
+        """
+
         states = self.stored_states.reshape((1, self.state_shape[0]*self.time_steps))
         self.epsilon *= self.epsilon_decay
         self.epsilon = max(self.epsilon_min, self.epsilon)
@@ -90,9 +132,42 @@ class DQN:
         return np.argmax(q_values)
 
     def remember(self, state, action, reward, new_state, done):
+        """
+        Store experience in memory.
+
+        Arguments:
+        ----------
+        state: np.array, mandatory
+        current state
+        action: int, mandatory
+        action taken
+        reward: float, mandatory
+        reward received
+        new_state: np.array, mandatory
+        new state after taking action
+        done: bool, mandatory
+        whether the episode is done
+
+        Returns:
+        --------
+        None
+        """
+
         self.memory.append([state, action, reward, new_state, done])
 
     def replay(self):
+        """
+        Replay memory to train model. Sample batch_size and memory and train model on it for one epoch. 
+        
+        Arguments:
+        ----------
+        None
+        
+        Returns:
+        --------
+        None
+        """
+
         if len(self.memory) < self.batch_size:
             return
 
@@ -109,14 +184,62 @@ class DQN:
  
 
     def save_model(self, fn):
-        # save model to file, give file name with .h5 extension
+        """
+        Save model to file, including weights and optimizer state. Give filename with extension .h5
+
+        Arguments:
+        ----------
+        fn: str, mandatory
+        filename with .h5 extension
+
+        Returns:
+        --------
+        None
+        """
+
         self.model.save(fn)
 
     def load_model(self, fn):
-        # load model from .h5 file
+        """
+        Load model from file, give file name with .h5 extension
+        
+        Arguments:
+        ----------
+        fn: str, mandatory
+        file name with .h5 extension
+        
+        Returns:
+        --------
+        None
+        """
+
         self.model = tf.keras.models.load_model(fn)
 
     def train(self, max_episodes=10, max_steps=500, save_freq=10):
+        """
+        Here we train the agent with the DQN algorithm. 
+        We first initialize the target model with the same weights as the model.
+        Then we loop over episodes and steps. In each step, we first act, then remember the experience,
+        then replay the experience, and finally update the target model.
+
+        During training, we save the model every save_freq episodes. And when done with each episode,
+        we print the episode number, the total reward and log the summaries.
+        
+        Parameters
+        ----------
+        max_episodes : int, optional
+        Maximum number of episodes to train for, by default 10
+        max_steps : int, optional
+        Maximum number of steps per episode, by default 500
+        save_freq : int, optional
+        Frequency of saving the model, by default 10
+            
+        Returns
+        -------
+        None
+
+        """
+
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = f'logs/DQN_basic_time_step{self.time_steps}/{current_time}'
         summary_writer = tf.summary.create_file_writer(train_log_dir)
@@ -167,6 +290,27 @@ class DQN:
         self.save_model(f"dqn_basic_final_episode{episode}_time_step{self.time_steps}.h5")
 
     def test(self, render=True, fps=30, filename='test_render.mp4'):
+        """
+        Test the agent in the environment. We first reset the environment, then loop over steps.
+        In each step, we first act, then update the stored states.
+        If render is True, we also render the environment. WHich currently don't work for unknown 
+        reasons, best guess is within imageio library.
+
+        Parameters
+        ----------
+        render : bool, optional
+        Whether to render the environment, by default True
+        fps : int, optional
+        Frames per second for rendering, by default 30
+        filename : str, optional
+        Filename for saving the rendering, by default 'test_render.mp4'
+
+        Returns
+        -------
+        rewards : float
+        Total reward for the episode
+        """
+
         cur_state, done, rewards = self.env.reset(), False, 0
         video = imageio.get_writer(filename, fps=fps)
         while not done:
@@ -181,6 +325,12 @@ class DQN:
 
 
 if __name__ == "__main__":
+    """
+    Here we initialize the environment, agent and train the agent.
+    If you want to load a model, uncomment the load_model line.
+    If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
+    """
+    
     #os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
     
     env = gym.make('CartPole-v0')
