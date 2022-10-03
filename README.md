@@ -1,4 +1,4 @@
-# DQN_vs_Double-DQN
+# DQN vs Double-DQN
 
 Final project in ELE680 Deep Neural Network at University of Stavanger (UiS)
 
