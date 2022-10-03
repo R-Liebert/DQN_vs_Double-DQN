@@ -9,6 +9,8 @@ from keras import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 
+import os
+
 '''
 Original paper: https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf
 - DQN model with Dense layers only
@@ -179,6 +181,7 @@ class DQN:
 
 
 if __name__ == "__main__":
+    #os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 
     
     env = gym.make('CartPole-v0')
     env._max_episode_steps = 500
