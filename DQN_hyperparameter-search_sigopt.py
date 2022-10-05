@@ -371,7 +371,7 @@ def main():
 
     for _ in range(experiment.observation_budget):
         value_dicts = []
-        env = gym.make('CartPole-v0')
+        env = gym.make('CartPole-v1')
         suggestion = conn.experiments(experiment.id).suggestions().create()
         assignments = suggestion.assignments
 
