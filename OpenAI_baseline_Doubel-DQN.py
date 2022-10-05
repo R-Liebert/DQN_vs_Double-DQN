@@ -19,7 +19,7 @@ Original paper: https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf
 - Uses target model for more stable training
 - More states was shown to have better performance for CartPole env
 
-This is the Double-DQN script from OpenAI Baseline which has been modified to work with the updated CartPole-v0 environment.
+This is the Double-DQN script from OpenAI Baseline which has been modified to work with the updated CartPole-v1 environment.
 
 '''
 
@@ -272,8 +272,8 @@ class DQN:
                 self.stored_states = np.zeros((self.time_steps, self.state_shape[0]))
                 print(f"episode {episode}: {total_reward} reward")
 
-                if episode % save_freq == 0:  # save model every n episodes
-                    self.save_model(f"dqn_basic_episode{episode}_time_step{self.time_steps}.h5")
+                #if episode % save_freq == 0:  # save model every n episodes
+                #    self.save_model(f"dqn_basic_episode{episode}_time_step{self.time_steps}.h5")
 
                 done, cur_state, steps, total_reward = False, self.env.reset(), 0, 0
                 self.update_states(cur_state)  # update stored states
@@ -329,7 +329,7 @@ class DQN:
         self.stored_states = np.zeros((self.time_steps, self.state_shape[0]))
         cur_state = self.env.reset()
         self.update_states(cur_state)
-        cur_state, done, rewards = self.env.reset(), False, 0
+        cur_state, _, done, rewards = self.env.reset(), False, 0
         video = imageio.get_writer(filename, fps=fps)
         while not done:
             action = self.act(test=True)
@@ -350,7 +350,7 @@ def main():
 
     #os.environ["CUDA_VISIBLE_DEVICES"]="0" # use GPU with ID=0 (uncomment if using GPU)
     
-    env = gym.make('CartPole-v0')
+    env = gym.make('CartPole-v1')
     env._max_episode_steps = 500
     dqn_agent = DQN(env, time_steps=10)
     dqn_agent.train(max_episodes=5)
