@@ -25,7 +25,7 @@ This is the Double-DQN script from OpenAI Baseline which has been modified to wo
 And edited to be a vanilla DQN. Sigopt is used to tune the hyperparameters.
 
 '''
-def setup_connection(api_token='MY_API_TOKEN', max_episodes=1000):
+def setup_connection(api_token='MY_API_TOKEN', max_episodes=100):
     """
     Setup Sigopt connection.
     Set a experiment name.
@@ -46,17 +46,17 @@ def setup_connection(api_token='MY_API_TOKEN', max_episodes=1000):
             dict(name="env_me", type="int", bounds=dict(min=100, max=1000)), # max episodes of environment
             dict(name='hl', type='int', bounds=dict(min=1, max=100)), # hidden layers 
             dict(name='hls', type='int', bounds=dict(min=4, max=512)), # hidden layer size
-            dict(name='e_decay', type='float', bounds=dict(min=0.9999, max=0.5)), # epsilon decay
-            dict(name='lr', type='float', bounds=dict(min=1e-5, max=1e-1)), # learning rate
-            dict(name='bs', type='float', bounds=dict(min=16, max=256)), # batch size
-            dict(name='g', type='float', bounds=dict(min=0.5, max=0.99)), # gamma
-            dict(name='ts', type='int', bounds=dict(min=3, max=10)), # time steps
-            dict(name='max_ep', type='int', bounds=dict(min=1, max=1000)), # max episodes
-            dict(name='m_s', type='int', bounds=dict(min=1, max=1000)), # max steps
+            dict(name='e_decay', type='double', bounds=dict(min=0.5, max=0.999)), # epsilon decay
+            dict(name='lr', type='double', bounds=dict(min=1e-5, max=1e-1)), # learning rate
+            dict(name='bs', type='int', bounds=dict(min=16, max=256)), # batch size
+            dict(name='g', type='double', bounds=dict(min=0.5, max=0.99)), # gamma
+            dict(name='ts', type='int', bounds=dict(min=3, max=50)), # time steps
+            dict(name='me', type='int', bounds=dict(min=1, max=max_episodes)), # max episodes
+            dict(name='ms', type='int', bounds=dict(min=1, max=1000)), # max steps
             ],
             metrics=[dict(name='average_reward', objective='maximize'), dict(name='final_test_reward', objective='maximize')],
             parallel_bandwidth=1,
-            observation_budget=10,
+            observation_budget=100,
             )
         
     print("Explore your experiment: https://app.sigopt.com/experiment/" + experiment.id + "/analysis")
@@ -116,7 +116,7 @@ class DQN:
         for i in range(self.hidden_layers):
             model.add(Dense(self.hidden_layer_size, activation="relu"))
         model.add(Dense(self.env.action_space.n))
-        model.compile(loss="mean_squared_error", optimizer=Adam(lr=self.learning_rate))
+        model.compile(loss="mean_squared_error", optimizer=Adam(learning_rate=self.learning_rate))
         return model
     
     def update_states(self, new_state):
@@ -281,6 +281,7 @@ class DQN:
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = f'logs/DQN_basic_time_step{self.time_steps}/{current_time}'
         summary_writer = tf.summary.create_file_writer(train_log_dir)
+        reward_over_time = 0
 
         done, episode, steps, epoch, total_reward = True, 0, 0, 0, 0
         while episode < max_episodes:
@@ -294,6 +295,7 @@ class DQN:
                     tf.summary.scalar('Main/episode_steps', steps, step=episode)
 
                 self.stored_states = np.zeros((self.time_steps, self.state_shape[0]))
+                reward_over_time += total_reward
                 print(f"episode {episode}: {total_reward} reward")
 
                 if episode % save_freq == 0:  # save model every n episodes
@@ -313,6 +315,7 @@ class DQN:
   
 
             total_reward += reward
+            
             steps += 1
             epoch += 1
 
@@ -327,7 +330,7 @@ class DQN:
 
         self.save_model(f"dqn_basic_final_episode{episode}_time_step{self.time_steps}.h5")
 
-        return (total_reward/episode).astype(np.float32)
+        return dict(name='average_reward', value= reward_over_time/episode)
 
     def test(self, render=True, fps=30, filename='test_render.mp4'):
         """
@@ -361,7 +364,7 @@ class DQN:
             if render:
                 video.append_data(self.env.render())
         video.close()
-        return rewards
+        return dict(name='final_test_reward', value=rewards)
 
 def main():
     """
@@ -371,10 +374,10 @@ def main():
     
     You can find your API token at https://sigopt.com/user/tokens
     """
-    sigopt_token = "INSERT TOKEN HERE" # Insert your API token here.
+    sigopt_token = "####################" # Insert your API token here.
     
-    #os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
-    conn, experiment = setup_connection(api_token=sigopt_token)
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
+    conn, experiment = setup_connection(api_token=sigopt_token, max_episodes=75)
     
 
     for _ in range(experiment.observation_budget):
@@ -394,7 +397,7 @@ def main():
             hidden_layer_size=assignments['hls'],
             batch_size=assignments['bs']
             )
-        value_dicts = dqn_agent.train(max_episodes=assignments['me'], max_steps=assignments['ms'])
+        value_dicts.append(dqn_agent.train(max_episodes=assignments['me'], max_steps=assignments['ms']))
         value_dicts.append(dqn_agent.test(render=False))
         
         conn.experiments(experiment.id).observations().create(suggestion=suggestion.id,values=value_dicts)

@@ -1,0 +1,21 @@
+# To ensure app dependencies are ported from your virtual environment/host machine into your container, run 'pip freeze > requirements.txt' in the terminal to overwrite this file
+# version should probably be added to the packages
+
+random
+
+numpy
+
+gym
+
+imageio
+
+datetime
+
+collections
+
+tensorflow
+
+os
+
+sigopt
+

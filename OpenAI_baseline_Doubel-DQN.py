@@ -303,7 +303,7 @@ class DQN:
 
         self.save_model(f"dqn_basic_final_episode{episode}_time_step{self.time_steps}.h5")
 
-    def test(self, render=True, fps=30, filename='test_render.mp4'):
+    def test(self, render=False, fps=30, filename='test_render.mp4'):
         """
         Test the agent in the environment. We first reset the environment, then loop over steps.
         In each step, we first act, then update the stored states.
@@ -353,7 +353,7 @@ def main():
     env = gym.make('CartPole-v0')
     env._max_episode_steps = 500
     dqn_agent = DQN(env, time_steps=10)
-    dqn_agent.train(max_episodes=10)
+    dqn_agent.train(max_episodes=5)
     # dqn_agent.load_model("basic_models/time_step4/dqn_basic_episode50_time_step4.h5")
     rewards = dqn_agent.test(render=False) # For some reason render=True doesn't work
     print(f"Total rewards: {rewards}. Take a look at tensorboard for more info.")

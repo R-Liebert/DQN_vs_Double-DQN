@@ -53,7 +53,7 @@ def setup_connection(api_token='MY_API_TOKEN', max_episodes=100):
             ],
             metrics=[dict(name='final_test_reward', objective='maximize'),dict(name='average_reward', objective='maximize')],
             parallel_bandwidth=1,
-            observation_budget=100,
+            observation_budget=70,
             )
         
     print("Explore your experiment: https://app.sigopt.com/experiment/" + experiment.id + "/analysis")
@@ -276,7 +276,7 @@ class DQN:
         """
 
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        train_log_dir = f'logs/DQN_basic_time_step{self.time_steps}/{current_time}'
+        train_log_dir = f"logs/DQN_basic_time_step{self.time_steps}/{current_time}"
         summary_writer = tf.summary.create_file_writer(train_log_dir)
         reward_over_time = 0
 
@@ -285,6 +285,7 @@ class DQN:
             if steps >= max_steps:
                 print(f"episode {episode}, reached max steps")
                 self.save_model(f"dqn_basic_maxed_episode{episode}_time_step{self.time_steps}.h5")
+                break
 
             if done:
                 with summary_writer.as_default():
@@ -352,15 +353,15 @@ class DQN:
         """
 
         cur_state, done, rewards = self.env.reset(), False, 0
-        video = imageio.get_writer(filename, fps=fps)
+        #video = imageio.get_writer(filename, fps=fps)
         while not done:
             action = self.act(test=True)
             new_state, reward, done, _, _ = self.env.step(action)
             self.update_states(new_state)
             rewards += reward
-            if render:
-                video.append_data(self.env.render())
-        video.close()
+            #if render:
+            #    video.append_data(self.env.render())
+        #video.close()
         return dict(name='final_test_reward', value=rewards)
 
 def main():
@@ -379,16 +380,14 @@ def main():
 
     for _ in range(experiment.observation_budget):
         value_dicts = []
-        env = gym.make('CartPole-v0')
+        env = gym.make('MountainCar-v0')
         suggestion = conn.experiments(experiment.id).suggestions().create()
         assignments = suggestion.assignments
 
-        env._max_episode_steps = assignments['env_me']
+        env._max_episode_steps = 1000
         dqn_agent = DQN(
             env=env,
             time_steps=assignments['ts'],
-            gamma=assignments['g'],
-            epsilon_decay=assignments['e_decay'],
             learning_rate=assignments['lr'],
             hidden_layers=assignments['hl'],
             hidden_layer_size=assignments['hls'],

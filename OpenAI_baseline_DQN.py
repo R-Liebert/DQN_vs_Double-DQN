@@ -79,7 +79,7 @@ class DQN:
         for i in range(self.hidden_layers):
             model.add(Dense(self.hidden_layer_size, activation="relu"))
         model.add(Dense(self.env.action_space.n))
-        model.compile(loss="mean_squared_error", optimizer=Adam(lr=self.learning_rate))
+        model.compile(loss="mean_squared_error", optimizer=Adam(learning_rate=self.learning_rate))
         return model
     
     def update_states(self, new_state):
@@ -97,13 +97,13 @@ class DQN:
         """
 
         self.stored_states = np.roll(self.stored_states, -1, axis=0)
-        new_state = np.asarray(new_state)
-        new_state = new_state.flatten()
-        if type(new_state) == tuple:
-            new_state = new_state[0]
-            new_state = new_state.flatten()
-        elif new_state.shape == (2,):
-            new_state = new_state[0]
+        #new_state = np.asarray(new_state)
+        #new_state = new_state.flatten()
+        #if type(new_state) == tuple:
+        #    new_state = new_state[0]
+        #    new_state = new_state.flatten()
+        #elif new_state.shape == (2,):
+        #    new_state = new_state[0]
         self.stored_states[-1] = new_state
 
     def act(self, test=False): 
@@ -261,7 +261,8 @@ class DQN:
                 if episode % save_freq == 0:  # save model every n episodes
                     self.save_model(f"dqn_basic_episode{episode}_time_step{self.time_steps}.h5")
 
-                done, cur_state, steps, total_reward = False, self.env.reset(), 0, 0
+                done, steps, total_reward = False, 0, 0
+                cur_state, _ = self.env.reset()
                 self.update_states(cur_state)  # update stored states
                 episode += 1
 
@@ -311,7 +312,8 @@ class DQN:
         Total reward for the episode
         """
 
-        cur_state, done, rewards = self.env.reset(), False, 0
+        cur_state, _ = self.env.reset()
+        done, rewards = False, 0
         video = imageio.get_writer(filename, fps=fps)
         while not done:
             action = self.act(test=True)
