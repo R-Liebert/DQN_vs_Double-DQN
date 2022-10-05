@@ -263,6 +263,7 @@ class DQN:
             if steps >= max_steps:
                 print(f"episode {episode}, reached max steps")
                 self.save_model(f"dqn_basic_maxed_episode{episode}_time_step{self.time_steps}.h5")
+                break
 
             if done:
                 with summary_writer.as_default():

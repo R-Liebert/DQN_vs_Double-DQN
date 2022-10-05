@@ -43,18 +43,14 @@ def setup_connection(api_token='MY_API_TOKEN', max_episodes=100):
         name="DQN optimization (Python)",
         type="offline",
         parameters=[
-            dict(name="env_me", type="int", bounds=dict(min=100, max=1000)), # max episodes of environment
             dict(name='hl', type='int', bounds=dict(min=1, max=100)), # hidden layers 
             dict(name='hls', type='int', bounds=dict(min=4, max=512)), # hidden layer size
-            dict(name='e_decay', type='double', bounds=dict(min=0.5, max=0.999)), # epsilon decay
             dict(name='lr', type='double', bounds=dict(min=1e-5, max=1e-1)), # learning rate
             dict(name='bs', type='int', bounds=dict(min=16, max=256)), # batch size
-            dict(name='g', type='double', bounds=dict(min=0.5, max=0.99)), # gamma
             dict(name='ts', type='int', bounds=dict(min=3, max=50)), # time steps
             dict(name='me', type='int', bounds=dict(min=1, max=max_episodes)), # max episodes
-            dict(name='ms', type='int', bounds=dict(min=1, max=1000)), # max steps
             ],
-            metrics=[dict(name='average_reward', objective='maximize'), dict(name='final_test_reward', objective='maximize')],
+            metrics=[dict(name='final_test_reward', objective='maximize'), dict(name='num_episodes', objective='minimize'), dict(name='average_reward', objective='maximize')],
             parallel_bandwidth=1,
             observation_budget=100,
             )
@@ -68,9 +64,9 @@ class DQN:
             env, 
             memory_cap=1000,
             time_steps=3,
-            gamma=0.85,
+            gamma=0.95,
             epsilon=1.0,
-            epsilon_decay=0.995,
+            epsilon_decay=0.999,
             epsilon_min=0.01,
             learning_rate=0.005,
             hidden_layers=1,
@@ -288,6 +284,7 @@ class DQN:
             if steps >= max_steps:
                 print(f"episode {episode}, reached max steps")
                 self.save_model(f"dqn_basic_maxed_episode{episode}_time_step{self.time_steps}.h5")
+                break
 
             if done:
                 with summary_writer.as_default():
@@ -329,10 +326,11 @@ class DQN:
             summary_writer.flush()
 
         self.save_model(f"dqn_basic_final_episode{episode}_time_step{self.time_steps}.h5")
+        
+        
+        return dict(name='average_reward', value= reward_over_time/episode), dict(name='num_episodes', value=max_episodes)
 
-        return dict(name='average_reward', value= reward_over_time/episode)
-
-    def test(self, render=True, fps=30, filename='test_render.mp4'):
+    def test(self):
         """
         Test the agent in the environment. We first reset the environment, then loop over steps.
         In each step, we first act, then update the stored states.
@@ -341,12 +339,7 @@ class DQN:
 
         Parameters
         ----------
-        render : bool, optional
-        Whether to render the environment, by default True
-        fps : int, optional
-        Frames per second for rendering, by default 30
-        filename : str, optional
-        Filename for saving the rendering, by default 'test_render.mp4'
+        none
 
         Returns
         -------
@@ -355,15 +348,11 @@ class DQN:
         """
 
         cur_state, done, rewards = self.env.reset(), False, 0
-        video = imageio.get_writer(filename, fps=fps)
         while not done:
             action = self.act(test=True)
             new_state, reward, done, _, _ = self.env.step(action)
             self.update_states(new_state)
             rewards += reward
-            if render:
-                video.append_data(self.env.render())
-        video.close()
         return dict(name='final_test_reward', value=rewards)
 
 def main():
@@ -386,19 +375,20 @@ def main():
         suggestion = conn.experiments(experiment.id).suggestions().create()
         assignments = suggestion.assignments
 
-        env._max_episode_steps = assignments['env_me']
+        env._max_episode_steps = 500
         dqn_agent = DQN(
             env=env,
             time_steps=assignments['ts'],
-            gamma=assignments['g'],
-            epsilon_decay=assignments['e_decay'],
             learning_rate=assignments['lr'],
             hidden_layers=assignments['hl'],
             hidden_layer_size=assignments['hls'],
             batch_size=assignments['bs']
             )
-        value_dicts.append(dqn_agent.train(max_episodes=assignments['me'], max_steps=assignments['ms']))
+        average_reward, num_episodes = dqn_agent.train(max_episodes=assignments['me'])
+        value_dicts.append(average_reward)
+        value_dicts.append(num_episodes)
         value_dicts.append(dqn_agent.test(render=False))
+        value_dicts.reverse()
         
         conn.experiments(experiment.id).observations().create(suggestion=suggestion.id,values=value_dicts)
     

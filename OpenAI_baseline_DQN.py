@@ -30,17 +30,18 @@ class DQN:
             self, 
             env, 
             memory_cap=1000,
-            time_steps=30,#3,
-            gamma= 0.99,#0.85,
+            time_steps=30, #3,
+            gamma= 0.99, #0.85,
             epsilon=1.0,
             epsilon_decay=0.995,
             epsilon_min=0.01,
-            learning_rate= 0.0025,#0.005,
-            hidden_layers=3,
-            hidden_layer_size=128,#24,
-            batch_size= 23, #32,
+            learning_rate=0.0025, #0.005,
+            hidden_layers=1,
+            hidden_layer_size=128, #24,
+            batch_size=236, #32,
             tau=0.125
     ):
+
         self.env = env
         self.memory = deque(maxlen=memory_cap)
         self.state_shape = env.observation_space.shape
@@ -215,7 +216,7 @@ class DQN:
 
         self.model = tf.keras.models.load_model(fn)
 
-    def train(self, max_episodes=39, max_steps=63, save_freq=10):
+    def train(self, max_episodes=39, max_steps=500, save_freq=10):
         """
         Here we train the agent with the DQN algorithm. 
         We first initialize the target model with the same weights as the model.
@@ -249,6 +250,7 @@ class DQN:
             if steps >= max_steps:
                 print(f"episode {episode}, reached max steps")
                 self.save_model(f"dqn_basic_maxed_episode{episode}_time_step{self.time_steps}.h5")
+                break
 
             if done:
                 with summary_writer.as_default():
@@ -332,10 +334,10 @@ def main():
     If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
     """
 
-    os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
+    #os.environ["CUDA_VISIBLE_DEVICES"] = "0" # use GPU with ID=0 (uncomment if GPU is available)
     
     env = gym.make('CartPole-v1')
-    env._max_episode_steps = 63
+    env._max_episode_steps = 500
     dqn_agent = DQN(env, time_steps=30)
     dqn_agent.train(max_episodes=39)
     # dqn_agent.load_model("basic_models/time_step4/dqn_basic_episode50_time_step4.h5")
