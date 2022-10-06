@@ -10,6 +10,8 @@ from keras.layers import Dense
 from keras.optimizers import Adam
 
 import os
+import sigopt
+from sigopt import Connection
 
 '''
 Original paper: https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf
@@ -19,29 +21,59 @@ Original paper: https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf
 - Uses target model for more stable training
 - More states was shown to have better performance for CartPole env
 
-This is the Double-DQN script from OpenAI Baseline which has been modified to work with the updated CartPole-v1 environment.
-And edited to be a vanilla DQN.
+This is the Double-DQN script from OpenAI Baseline which has been modified to work with the updated CartPole-v0 environment.
+And edited to be a vanilla DQN. Sigopt is used to tune the hyperparameters.
 
 '''
+def setup_connection(api_token, max_episodes=10000):
+    """
+    Setup Sigopt connection.
+    Set a experiment name.
 
+    Arguments:
+    api_token: Sigopt API token
+    You can find your API token at https://sigopt.com/user/tokens
+    max_episodes: int 
+    Maximum number of episodes to run
+    """
+    
+    conn = Connection(client_token=api_token)
+
+    experiment = conn.experiments().create(
+        name="DQN optimization (CartPole-v1)",
+        type="offline",
+        parameters=[
+            dict(name='hl', type='int', bounds=dict(min=1, max=100)), # hidden layers 
+            dict(name='hls', type='int', bounds=dict(min=4, max=512)), # hidden layer size
+            dict(name='lr', type='double', bounds=dict(min=1e-5, max=1e-1)), # learning rate
+            dict(name='bs', type='int', bounds=dict(min=16, max=256)), # batch size
+            dict(name='ts', type='int', bounds=dict(min=3, max=50)), # time steps
+            dict(name='me', type='int', bounds=dict(min=5000, max=max_episodes)), # max episodes
+            ],
+            metrics=[dict(name='final_test_reward', objective='maximize')],
+            parallel_bandwidth=2,
+            observation_budget=60,
+            )
+        
+    print("Explore your experiment: https://app.sigopt.com/experiment/" + experiment.id + "/analysis")
+    return conn, experiment
 
 class DQN:
     def __init__(
             self, 
             env, 
             memory_cap=1000,
-            time_steps=5, #3,
-            gamma= 0.99, #0.85,
+            time_steps=3,
+            gamma=0.95,
             epsilon=1.0,
-            epsilon_decay=0.995,
+            epsilon_decay=0.999,
             epsilon_min=0.01,
-            learning_rate=0.0025, #0.005,
+            learning_rate=0.005,
             hidden_layers=1,
-            hidden_layer_size=128, #24,
-            batch_size=236, #32,
+            hidden_layer_size=24,
+            batch_size=32,
             tau=0.125
     ):
-
         self.env = env
         self.memory = deque(maxlen=memory_cap)
         self.state_shape = env.observation_space.shape
@@ -96,10 +128,16 @@ class DQN:
         --------
         None
         """
-        
+
         self.stored_states = np.roll(self.stored_states, -1, axis=0)
+        new_state = np.asarray(new_state)
+        new_state = new_state.flatten()
+        if type(new_state) == tuple:
+            new_state = new_state[0]
+            new_state = new_state.flatten()
+        elif new_state.shape == (2,):
+            new_state = new_state[0]
         self.stored_states[-1] = new_state
-        
 
     def act(self, test=False): 
         """
@@ -210,7 +248,7 @@ class DQN:
 
         self.model = tf.keras.models.load_model(fn)
 
-    def train(self, max_episodes=750, max_steps=100, save_freq=10):
+    def train(self, max_episodes=10, max_steps=500, save_freq=10):
         """
         Here we train the agent with the DQN algorithm. 
         We first initialize the target model with the same weights as the model.
@@ -231,13 +269,15 @@ class DQN:
             
         Returns
         -------
-        None
+        average_rewards : float32
+        Average reward over all episodes
 
         """
 
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = f'logs/DQN_basic_time_step{self.time_steps}/{current_time}'
         summary_writer = tf.summary.create_file_writer(train_log_dir)
+        reward_over_time = 0
 
         done, episode, steps, epoch, total_reward = True, 0, 0, 0, 0
         while episode < max_episodes:
@@ -252,19 +292,18 @@ class DQN:
                     tf.summary.scalar('Main/episode_steps', steps, step=episode)
 
                 self.stored_states = np.zeros((self.time_steps, self.state_shape[0]))
+                reward_over_time += total_reward
                 print(f"episode {episode}: {total_reward} reward")
 
                 if episode % save_freq == 0:  # save model every n episodes
                     self.save_model(f"dqn_basic_episode{episode}_time_step{self.time_steps}.h5")
 
-                done, steps, total_reward = False, 0, 0
-                cur_state, _ = self.env.reset()
+                done, cur_state, steps, total_reward = False, self.env.reset(), 0, 0
                 self.update_states(cur_state)  # update stored states
                 episode += 1
 
             action = self.act()  # model determine action, states taken from self.stored_states
             new_state, reward, done, _, _ = self.env.step(action)  # perform action on env
-            print(f"state: {cur_state}, new_state: {new_state}")
             # modified_reward = 1 - abs(new_state[2] / (np.pi / 2))  # modified for CartPole env, reward based on angle
             prev_stored_states = self.stored_states
             self.update_states(new_state)  # update stored states
@@ -273,6 +312,7 @@ class DQN:
   
 
             total_reward += reward
+            
             steps += 1
             epoch += 1
 
@@ -286,6 +326,8 @@ class DQN:
             summary_writer.flush()
 
         self.save_model(f"dqn_basic_final_episode{episode}_time_step{self.time_steps}.h5")
+        
+
 
     def test(self, num_tests=5):
         """
@@ -296,53 +338,70 @@ class DQN:
 
         Parameters
         ----------
-        render : bool, optional
-        Whether to render the environment, by default True
-        fps : int, optional
-        Frames per second for rendering, by default 30
-        filename : str, optional
-        Filename for saving the rendering, by default 'test_render.mp4'
+        none
 
         Returns
         -------
         rewards : float
         Total reward for the episode
         """
+
         total_reward = 0
-        
         for _ in range(num_tests):
             cur_state, done, rewards = self.env.reset(), False, 0
             steps = 0
-            while not done and steps < 100:
+            while not done and steps < 500:
                 action = self.act(test=True)
                 new_state, reward, done, _, _ = self.env.step(action)
                 self.update_states(new_state)
                 rewards += reward
                 steps += 1
-            print(f"test reward: {rewards}")
             total_reward += rewards
         return dict(name='final_test_reward', value=total_reward/num_tests)
-
-
 
 def main():
     """
     Here we initialize the environment, agent and train the agent.
     If you want to load a model, uncomment the load_model line.
     If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
-    """
-
-    #os.environ["CUDA_VISIBLE_DEVICES"] = "0" # use GPU with ID=0 (uncomment if GPU is available)
     
-    env = gym.make('Acrobot-v1')
-    env._max_episode_steps = 100
-    dqn_agent = DQN(env, time_steps=5)
-    dqn_agent.train(max_episodes=750)
-    # dqn_agent.load_model("basic_models/time_step4/dqn_basic_episode50_time_step4.h5")
+    You can find your API token at https://sigopt.com/user/tokens
+    """
+    sigopt_token = "UDTVDVHKBTRMWMWZOFZQIJBTCEQBTWOPDZXPVIFBSNEYPDTA" # Insert your API token here.
+    
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
+    conn, experiment = setup_connection(api_token=sigopt_token)
+    
 
-    rewards = dqn_agent.test() # For some reason render=True doesn't work
+    for _ in range(experiment.observation_budget):
+        value_dicts = []
+        env = gym.make('CartPole-v1')
+        suggestion = conn.experiments(experiment.id).suggestions().create()
+        assignments = suggestion.assignments
 
-    print(f"Total rewards: {rewards}. Take a look at tensorboard for more info.")
+        env._max_episode_steps = 500
+        dqn_agent = DQN(
+            env=env,
+            time_steps=assignments['ts'],
+            learning_rate=assignments['lr'],
+            hidden_layers=assignments['hl'],
+            hidden_layer_size=assignments['hls'],
+            batch_size=assignments['bs']
+            )
+        
+        dqn_agent.train(max_episodes=assignments['me'])
+        value_dicts.append(dqn_agent.test())
+        
+        conn.experiments(experiment.id).observations().create(suggestion=suggestion.id,values=value_dicts)
+    
+        #update experiment object
+        experiment = conn.experiments(experiment.id).fetch()
+
+    assignments = conn.experiments(experiment.id).best_assignments().fetch().data[0].assignments # get best assignments
+
+    print("BEST ASSIGNMENTS FOUND: \n", assignments)
+
 
 if __name__ == "__main__":
-    main()
+    main() 
+   
