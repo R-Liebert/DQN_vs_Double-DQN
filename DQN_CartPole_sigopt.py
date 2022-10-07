@@ -1,8 +1,7 @@
 import random
 import numpy as np
 import gym
-import imageio  # write env render to mp4
-import datetime
+
 from collections import deque
 import tensorflow as tf
 from keras import Sequential
