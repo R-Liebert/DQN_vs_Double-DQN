@@ -92,7 +92,7 @@ class DQN:
 
         self.model = self.create_model()
 
-        self.summaries = {}
+        #self.summaries = {}
 
     def create_model(self):
         """
@@ -159,7 +159,7 @@ class DQN:
         self.epsilon = max(self.epsilon_min, self.epsilon)
         epsilon = 0.01 if test else self.epsilon  # use epsilon = 0.01 when testing
         q_values = self.model.predict(states)[0]
-        self.summaries['q_val'] = max(q_values)
+        #self.summaries['q_val'] = max(q_values)
         if np.random.random() < epsilon:
             return self.env.action_space.sample()  # sample random action
         return np.argmax(q_values)
@@ -212,7 +212,7 @@ class DQN:
         q_future = self.model.predict(batch_new_states).max(axis=1)
         batch_target[range(self.batch_size), action] = reward + (1 - done) * q_future * self.gamma
         hist = self.model.fit(batch_states, batch_target, epochs=1, verbose=0)
-        self.summaries['loss'] = np.mean(hist.history['loss'])
+        #self.summaries['loss'] = np.mean(hist.history['loss'])
 
  
 
@@ -274,29 +274,29 @@ class DQN:
 
         """
 
-        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        train_log_dir = f'logs/DQN_basic_time_step{self.time_steps}/{current_time}'
-        summary_writer = tf.summary.create_file_writer(train_log_dir)
+        #current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        #train_log_dir = f'logs/DQN_basic_time_step{self.time_steps}/{current_time}'
+        #summary_writer = tf.summary.create_file_writer(train_log_dir)
         reward_over_time = 0
 
         done, episode, steps, epoch, total_reward = True, 0, 0, 0, 0
         while episode < max_episodes:
-            if steps >= max_steps:
-                print(f"episode {episode}, reached max steps")
-                self.save_model(f"dqn_basic_maxed_episode{episode}_time_step{self.time_steps}.h5")
-                break
+            if steps >= max_steps or done:
 
-            if done:
-                with summary_writer.as_default():
-                    tf.summary.scalar('Main/episode_reward', total_reward, step=episode)
-                    tf.summary.scalar('Main/episode_steps', steps, step=episode)
+
+                #with summary_writer.as_default():
+                #   tf.summary.scalar('Main/episode_reward', total_reward, step=episode)
+                #    tf.summary.scalar('Main/episode_steps', steps, step=episode)
 
                 self.stored_states = np.zeros((self.time_steps, self.state_shape[0]))
                 reward_over_time += total_reward
-                print(f"episode {episode}: {total_reward} reward")
+                if not done:
+                    print(f"episode {episode}, reached max steps")
+                else:
+                    print(f"episode {episode}: {total_reward} reward")
 
-                if episode % save_freq == 0:  # save model every n episodes
-                    self.save_model(f"dqn_basic_episode{episode}_time_step{self.time_steps}.h5")
+                #if episode % save_freq == 0:  # save model every n episodes
+                #    self.save_model(f"dqn_basic_episode{episode}_time_step{self.time_steps}.h5")
 
                 done, cur_state, steps, total_reward = False, self.env.reset(), 0, 0
                 self.update_states(cur_state)  # update stored states
@@ -317,15 +317,15 @@ class DQN:
             epoch += 1
 
             # Tensorboard update
-            with summary_writer.as_default():
-                if len(self.memory) > self.batch_size:
-                    tf.summary.scalar('Stats/loss', self.summaries['loss'], step=epoch)
-                tf.summary.scalar('Stats/q_val', self.summaries['q_val'], step=epoch)
-                tf.summary.scalar('Main/step_reward', reward, step=epoch)
+            #with summary_writer.as_default():
+            #    if len(self.memory) > self.batch_size:
+            #        tf.summary.scalar('Stats/loss', self.summaries['loss'], step=epoch)
+            #    tf.summary.scalar('Stats/q_val', self.summaries['q_val'], step=epoch)
+            #    tf.summary.scalar('Main/step_reward', reward, step=epoch)
 
-            summary_writer.flush()
+            #summary_writer.flush()
 
-        self.save_model(f"dqn_basic_final_episode{episode}_time_step{self.time_steps}.h5")
+        #self.save_model(f"dqn_basic_final_episode{episode}_time_step{self.time_steps}.h5")
         
 
 
