@@ -87,7 +87,7 @@ def play_game(env, max_episodes=1000, hidden_layers=1, hidden_layer_size=24, lea
         if step >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] >= 195):
                 print(f"Environment solved in {episode} episodes, exploration: {dqn_solver.epsilon}, score: {step}")
                 return np.mean(total_rewards[-100:]), episode, dqn_solver
-        if not episode == 0 and episode % 10 == 0:
+        if not episode == 0 and episode % 25 == 0:
             dqn_solver.experience_replay()
 
         total_rewards.append(step)
