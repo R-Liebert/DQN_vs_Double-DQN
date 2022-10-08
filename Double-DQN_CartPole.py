@@ -212,7 +212,7 @@ def main():
             tf.summary.scalar('episode reward', total_reward, step=episode)
             tf.summary.scalar('running avg reward(100)', avg_rewards, step=episode)
             tf.summary.scalar('average loss)', losses, step=episode)
-        #if episode % 100 == 0:
+        #if episode % 100 == 0 and episode != 0:
             #print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}, episode loss: {losses}")
         # Check if last 100 episodes have total_reward >= 195 to approve training
         if episode >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] >= 195):
