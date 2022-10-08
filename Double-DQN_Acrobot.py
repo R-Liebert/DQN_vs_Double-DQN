@@ -84,10 +84,15 @@ class DQN:
         return loss
 
     def get_action(self, states, epsilon):
+        valid_actions = [a for a in range(self.num_actions)] 
         if np.random.random() < epsilon:
-            return np.random.choice(self.num_actions)
+            return np.random.choice(valid_actions)
         else:
-            return np.argmax(self.predict(np.atleast_2d(states))[0])
+            best_action = np.argmax(self.predict(np.atleast_2d(states))[0])
+            if best_action in valid_actions:
+                return best_action
+            else:
+                return np.random.choice(valid_actions)
 
     def add_experience(self, exp):
         if len(self.experience['s']) >= self.max_experiences:
@@ -138,10 +143,10 @@ def test(env, TrainNet):
     steps = 0
     done = False
     truncated = False
-    observation, _ = env.reset()
+    observations, _ = env.reset()
     while not done and not truncated:
-        action = TrainNet.get_action(observation, 0)
-        observation, reward, done, truncated, _= env.step(action)
+        action = TrainNet.get_action(observations, 0)
+        observations, reward, done, truncated, _= env.step(action)
         steps += 1
         rewards += reward
     
@@ -173,8 +178,6 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
 
 
-
-    value_dicts = []
     env = gym.make('Acrobot-v1')
 
 
@@ -183,8 +186,8 @@ def main():
 
     gamma = 0.95 
     copy_step = 25
-    num_states = len(env.observation_space.sample())
-    num_actions = env.action_space.n
+    num_states = 6 # hardcoded until solved
+    num_actions = 3 # hardcoded until solved
     hidden_units = 2
     hidden_layers = 24
     max_experiences = 10000
@@ -197,7 +200,7 @@ def main():
     summary_writer = tf.summary.create_file_writer(log_dir)
     TrainNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
     TargetNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
-    max_episodes = 2000
+    max_episodes = 1000
     total_rewards = np.empty(max_episodes)
     epsilon = 1
     decay = 0.99
@@ -211,10 +214,10 @@ def main():
             tf.summary.scalar('episode reward', total_reward, step=episode)
             tf.summary.scalar('running avg reward(100)', avg_rewards, step=episode)
             tf.summary.scalar('average loss)', losses, step=episode)
-        #if episode % 100 == 0:
-            #print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}, episode loss: {losses}")
+        if episode % 100 == 0 and episode != 0:
+            print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}, episode loss: {losses}")
         # Check if last 100 episodes have total_reward >= 195 to approve training
-        if episode >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] < 100):
+        if episode >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] > -100):
             final_episode = episode
             print(f"You solved it in {final_episode} episodes!")
             break
