@@ -201,7 +201,7 @@ def main():
     max_episodes = 2000
     total_rewards = np.empty(max_episodes)
     epsilon = 1
-    decay = 0.999
+    decay = 0.99
     min_epsilon = 0.1
     for episode in range(max_episodes):
         epsilon = max(min_epsilon, epsilon * decay)
