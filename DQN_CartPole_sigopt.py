@@ -1,30 +1,20 @@
+import os
+from os import truncate
 import random
-import numpy as np
 import gym
-
+import numpy as np
 from collections import deque
-import tensorflow as tf
-from keras import Sequential
+from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
+import tensorflow as tf
 
-import os
+
 import sigopt
 from sigopt import Connection
 
-'''
-Original paper: https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf
-- DQN model with Dense layers only
-- Model input is changed to take current and n previous states where n = time_steps
-- Multiple states are concatenated before given to the model
-- Uses target model for more stable training
-- More states was shown to have better performance for CartPole env
 
-This is the Double-DQN script from OpenAI Baseline which has been modified to work with the updated CartPole-v0 environment.
-And edited to be a vanilla DQN. Sigopt is used to tune the hyperparameters.
-
-'''
-def setup_connection(api_token, max_episodes=10000):
+def setup_connection(api_token):
     """
     Setup Sigopt connection.
     Set a experiment name.
@@ -42,332 +32,138 @@ def setup_connection(api_token, max_episodes=10000):
         name="DQN optimization (CartPole-v1)",
         type="offline",
         parameters=[
-            dict(name='hl', type='int', bounds=dict(min=1, max=100)), # hidden layers 
-            dict(name='hls', type='int', bounds=dict(min=4, max=512)), # hidden layer size
+            dict(name='hl', type='int', bounds=dict(min=1, max=3)), # hidden layers 
+            dict(name='hls', type='int', bounds=dict(min=12, max=48)), # hidden layer size
             dict(name='lr', type='double', bounds=dict(min=1e-5, max=1e-1)), # learning rate
-            dict(name='bs', type='int', bounds=dict(min=16, max=256)), # batch size
-            dict(name='ts', type='int', bounds=dict(min=3, max=50)), # time steps
-            dict(name='me', type='int', bounds=dict(min=5000, max=max_episodes)), # max episodes
+            dict(name='bs', type='int', bounds=dict(min=16, max=64)), # batch size
+            dict(name='dr', type='double', bounds=dict(min=0.9, max=0.999)), # decay rate
+            dict(name='g', type='double', bounds=dict(min=0.8, max=0.99)) # gamma
             ],
-            metrics=[dict(name='final_test_reward', objective='maximize')],
-            parallel_bandwidth=2,
+            metrics=[dict(name='test_reward', objective='maximize'), dict(name='final_episode', objective='minimize')],
+            parallel_bandwidth=1,
             observation_budget=60,
             )
         
     print("Explore your experiment: https://app.sigopt.com/experiment/" + experiment.id + "/analysis")
     return conn, experiment
 
-class DQN:
-    def __init__(
-            self, 
-            env, 
-            memory_cap=1000,
-            time_steps=3,
-            gamma=0.95,
-            epsilon=1.0,
-            epsilon_decay=0.999,
-            epsilon_min=0.01,
-            learning_rate=0.005,
-            hidden_layers=1,
-            hidden_layer_size=24,
-            batch_size=32,
-            tau=0.125
-    ):
-        self.env = env
-        self.memory = deque(maxlen=memory_cap)
-        self.state_shape = env.observation_space.shape
-        self.time_steps = time_steps
-        self.stored_states = np.zeros((self.time_steps, self.state_shape[0]))
-        
-        self.gamma = gamma  # discount factor
-        self.epsilon = epsilon  # amount of randomness in e-greedy policy
-        self.epsilon_min = epsilon_min
-        self.epsilon_decay = epsilon_decay  # exponential decay
-        self.learning_rate = learning_rate
-        self.hidden_layers = hidden_layers # number of hidden layers
-        self.hidden_layer_size = hidden_layer_size # number of nodes in each hidden layer
+class DQNSolver:
+
+    def __init__(self, num_states, action_space, hidden_layers, hidden_layer_size, learning_rate, batch_size, decay_rate, gamma):
+        self.epsilon = 1
+        self.min_epsilon = 0.01
+        self.epsilon_decay = 0.999
         self.batch_size = batch_size
-        self.tau = tau  # target model update
+        self.learning_rate = learning_rate
+        self.decay_rate = decay_rate
+        self.gamma = gamma
+        self.action_space = action_space
+        self.memory = deque(maxlen=batch_size)
 
-        self.model = self.create_model()
+        self.model = Sequential()
+        self.model.add(Dense(24, input_shape=(num_states,), activation="relu"))
+        for _ in range(hidden_layers):
+            self.model.add(Dense(hidden_layer_size, activation="relu"))
+        self.model.add(Dense(self.action_space, activation="linear"))
+        self.model.compile(loss="mse", optimizer=Adam(learning_rate=learning_rate, decay=decay_rate))
 
-        #self.summaries = {}
+    def remember(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
 
-    def create_model(self):
-        """
-        Create model with Dense layers only.
-        
-        Arguments:
-        ----------
-        None
+    def act(self, state):
+        if np.random.rand() < self.epsilon:
+            return random.randrange(self.action_space)
+        return np.argmax(self.model.predict(np.atleast_2d(state))[0])
 
-        Returns:
-        --------
-        model: keras model
-        """
-
-        model = Sequential()
-        model.add(Dense(24, input_dim=self.state_shape[0]*self.time_steps, activation="relu"))
-        for i in range(self.hidden_layers):
-            model.add(Dense(self.hidden_layer_size, activation="relu"))
-        model.add(Dense(self.env.action_space.n))
-        model.compile(loss="mean_squared_error", optimizer=Adam(learning_rate=self.learning_rate))
-        return model
-    
-    def update_states(self, new_state):
-        """
-        Update stored states with new state. The new state is added to the end of the stored states and the first state is removed.
-
-        Arguments:
-        ----------
-        new_state: np.array, mandatory
-        new state to be added to stored states
-
-        Returns:
-        --------
-        None
-        """
-
-        self.stored_states = np.roll(self.stored_states, -1, axis=0)
-        new_state = np.asarray(new_state)
-        new_state = new_state.flatten()
-        if type(new_state) == tuple:
-            new_state = new_state[0]
-            new_state = new_state.flatten()
-        elif new_state.shape == (2,):
-            new_state = new_state[0]
-        self.stored_states[-1] = new_state
-
-    def act(self, test=False): 
-        """
-        Choose action based on epsilon-greedy policy.
-
-        Arguments:
-        ----------
-        test: bool, optional
-        if True, choose action with highest Q-value
-
-        Returns:
-        --------
-        action: int
-        action to be taken
-        """
-
-        states = self.stored_states.reshape((1, self.state_shape[0]*self.time_steps))
-        self.epsilon *= self.epsilon_decay
-        self.epsilon = max(self.epsilon_min, self.epsilon)
-        epsilon = 0.01 if test else self.epsilon  # use epsilon = 0.01 when testing
-        q_values = self.model.predict(states)[0]
-        #self.summaries['q_val'] = max(q_values)
-        if np.random.random() < epsilon:
-            return self.env.action_space.sample()  # sample random action
-        return np.argmax(q_values)
-
-    def remember(self, state, action, reward, new_state, done):
-        """
-        Store experience in memory.
-
-        Arguments:
-        ----------
-        state: np.array, mandatory
-        current state
-        action: int, mandatory
-        action taken
-        reward: float, mandatory
-        reward received
-        new_state: np.array, mandatory
-        new state after taking action
-        done: bool, mandatory
-        whether the episode is done
-
-        Returns:
-        --------
-        None
-        """
-
-        self.memory.append([state, action, reward, new_state, done])
-
-    def replay(self):
-        """
-        Replay memory to train model. Sample batch_size and memory and train model on it for one epoch. 
-        
-        Arguments:
-        ----------
-        None
-        
-        Returns:
-        --------
-        None
-        """
-
+    def experience_replay(self):
         if len(self.memory) < self.batch_size:
             return
-
-        samples = random.sample(self.memory, self.batch_size)
-        states, action, reward, new_states, done = map(np.asarray, zip(*samples))
-        batch_states = np.array(states).reshape(self.batch_size, -1)
-        batch_new_states = np.array(new_states).reshape(self.batch_size, -1)
-        batch_target = self.model.predict(batch_states)
-        q_future = self.model.predict(batch_new_states).max(axis=1)
-        batch_target[range(self.batch_size), action] = reward + (1 - done) * q_future * self.gamma
-        hist = self.model.fit(batch_states, batch_target, epochs=1, verbose=0)
-        #self.summaries['loss'] = np.mean(hist.history['loss'])
-
- 
-
-    def save_model(self, fn):
-        """
-        Save model to file, including weights and optimizer state. Give filename with extension .h5
-
-        Arguments:
-        ----------
-        fn: str, mandatory
-        filename with .h5 extension
-
-        Returns:
-        --------
-        None
-        """
-
-        self.model.save(fn)
-
-    def load_model(self, fn):
-        """
-        Load model from file, give file name with .h5 extension
-        
-        Arguments:
-        ----------
-        fn: str, mandatory
-        file name with .h5 extension
-        
-        Returns:
-        --------
-        None
-        """
-
-        self.model = tf.keras.models.load_model(fn)
-
-    def train(self, max_episodes=10, max_steps=500, save_freq=10):
-        """
-        Here we train the agent with the DQN algorithm. 
-        We first initialize the target model with the same weights as the model.
-        Then we loop over episodes and steps. In each step, we first act, then remember the experience,
-        then replay the experience, and finally update the target model.
-
-        During training, we save the model every save_freq episodes. And when done with each episode,
-        we print the episode number, the total reward and log the summaries.
-        
-        Parameters
-        ----------
-        max_episodes : int, optional
-        Maximum number of episodes to train for, by default 10
-        max_steps : int, optional
-        Maximum number of steps per episode, by default 500
-        save_freq : int, optional
-        Frequency of saving the model, by default 10
-            
-        Returns
-        -------
-        average_rewards : float32
-        Average reward over all episodes
-
-        """
-
-        #current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        #train_log_dir = f'logs/DQN_basic_time_step{self.time_steps}/{current_time}'
-        #summary_writer = tf.summary.create_file_writer(train_log_dir)
-        reward_over_time = 0
-
-        done, episode, steps, epoch, total_reward = True, 0, 0, 0, 0
-        while episode < max_episodes:
-            if steps >= max_steps or done:
+        batch = random.sample(self.memory, self.batch_size)
+        for state, action, reward, state_next, terminated in batch:
+            q_update = reward
+            if not terminated:
+                q_update = (reward + self.gamma * np.amax(self.model.predict(state_next)[0]))
+            q_values = self.model.predict(state)
+            q_values[0][action] = q_update
+            self.model.fit(state, q_values, verbose=0)
+        self.epsilon *= self.epsilon_decay
+        self.epsilon = max(self.min_epsilon, self.epsilon)
 
 
-                #with summary_writer.as_default():
-                #   tf.summary.scalar('Main/episode_reward', total_reward, step=episode)
-                #    tf.summary.scalar('Main/episode_steps', steps, step=episode)
+def play_game(env, max_episodes=1000, hidden_layers=1, hidden_layer_size=24, learning_rate=1e-3, batch_size=32, decay_rate=1e-3, gamma=0.95):
+    observations, _ = env.reset()
+    num_states = len(env.observation_space.sample())
+    num_actions = env.action_space.n
+    dqn_solver = DQNSolver(num_states, num_actions, hidden_layers, hidden_layer_size, learning_rate, batch_size, decay_rate, gamma)
 
-                self.stored_states = np.zeros((self.time_steps, self.state_shape[0]))
-                reward_over_time += total_reward
-                if not done:
-                    print(f"episode {episode}, reached max steps")
-                else:
-                    print(f"episode {episode}: {total_reward} reward")
+    steps = []
+    for episode in range(max_episodes):
+        state, _ = env.reset()
+        state = np.reshape(state, [1, env.observation_space.shape[0]])
+        terminated = False
+        truncated = False
+        step = 0
+        rewards = 0
+        while not terminated and not truncated:
+            step += 1
+            #env.render()
+            action = dqn_solver.act(state)
+            state_next, reward, terminated, truncated, info = env.step(action)
+            state_next = np.reshape(state_next, [1, env.observation_space.shape[0]])
+            dqn_solver.remember(state, action, reward, state_next, terminated)
+            rewards += reward
+            state = state_next
+            if terminated or truncated:
+                print (f"terminated after: {episode} episodes, exploration: {dqn_solver.epsilon}, score: {step}" )
+                if truncated:
+                    step = 500
+                steps.append(step)
 
-                #if episode % save_freq == 0:  # save model every n episodes
-                #    self.save_model(f"dqn_basic_episode{episode}_time_step{self.time_steps}.h5")
+            if len(steps) > 100:
+                if all(i >= 195 for i in steps[max(0, episode - 100):(episode + 1)]): 
+                    print(f"Environment solved in {episode} episodes, exploration: {dqn_solver.epsilon}, score: {step}")
+                    return np.mean(steps[-100:]), episode, dqn_solver
+            if not episode == 0 and episode % 10 == 0:
+                dqn_solver.experience_replay()
 
-                done, cur_state, steps, total_reward = False, self.env.reset(), 0, 0
-                self.update_states(cur_state)  # update stored states
-                episode += 1
+        print (f"Episodes: {episode}, average score last hundred episodes: {np.mean(steps[-100:])}" )
 
-            action = self.act()  # model determine action, states taken from self.stored_states
-            new_state, reward, done, _, _ = self.env.step(action)  # perform action on env
-            # modified_reward = 1 - abs(new_state[2] / (np.pi / 2))  # modified for CartPole env, reward based on angle
-            prev_stored_states = self.stored_states
-            self.update_states(new_state)  # update stored states
-            self.remember(prev_stored_states, action, reward, self.stored_states, done)  # add to memory
-            self.replay()  # iterates default (prediction) model through memory replay
-  
+    print ("Done")
+    return np.mean(steps[-100:]), episode, dqn_solver
 
-            total_reward += reward
-            
-            steps += 1
-            epoch += 1
+def test(env, model):
+    rewards = 0
+    steps = 0
+    done = False
+    truncated = False
+    observation, _ = env.reset()
+    while not done and not truncated:
+        action = model.act(observation)
+        observation, reward, done, truncated, _= env.step(action)
+        steps += 1
+        rewards += reward
+    
+    rewards = 500 if truncated==True else rewards 
 
-            # Tensorboard update
-            #with summary_writer.as_default():
-            #    if len(self.memory) > self.batch_size:
-            #        tf.summary.scalar('Stats/loss', self.summaries['loss'], step=epoch)
-            #    tf.summary.scalar('Stats/q_val', self.summaries['q_val'], step=epoch)
-            #    tf.summary.scalar('Main/step_reward', reward, step=epoch)
+    return rewards
 
-            #summary_writer.flush()
-
-        #self.save_model(f"dqn_basic_final_episode{episode}_time_step{self.time_steps}.h5")
-        
-
-
-    def test(self, num_tests=5):
-        """
-        Test the agent in the environment. We first reset the environment, then loop over steps.
-        In each step, we first act, then update the stored states.
-        If render is True, we also render the environment. WHich currently don't work for unknown 
-        reasons, best guess is within imageio library.
-
-        Parameters
-        ----------
-        none
-
-        Returns
-        -------
-        rewards : float
-        Total reward for the episode
-        """
-
-        total_reward = 0
-        for _ in range(num_tests):
-            cur_state, done, rewards = self.env.reset(), False, 0
-            steps = 0
-            while not done and steps < 500:
-                action = self.act(test=True)
-                new_state, reward, done, _, _ = self.env.step(action)
-                self.update_states(new_state)
-                rewards += reward
-                steps += 1
-            total_reward += rewards
-        return dict(name='final_test_reward', value=total_reward/num_tests)
 
 def main():
-    """
-    Here we initialize the environment, agent and train the agent.
-    If you want to load a model, uncomment the load_model line.
-    If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
-    
-    You can find your API token at https://sigopt.com/user/tokens
-    """
+
     sigopt_token = "UDTVDVHKBTRMWMWZOFZQIJBTCEQBTWOPDZXPVIFBSNEYPDTA" # Insert your API token here.
-    
+
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            # Currently, memory growth needs to be the same across GPUs
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            # Memory growth must be set before GPUs have been initialized
+            print(e)
+
     os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
     conn, experiment = setup_connection(api_token=sigopt_token)
     
@@ -377,20 +173,23 @@ def main():
         env = gym.make('CartPole-v1')
         suggestion = conn.experiments(experiment.id).suggestions().create()
         assignments = suggestion.assignments
+        max_steps = 500
+        env._max_episode_steps = max_steps
+        max_episodes = 2000
 
-        env._max_episode_steps = 500
-        dqn_agent = DQN(
-            env=env,
-            time_steps=assignments['ts'],
-            learning_rate=assignments['lr'],
-            hidden_layers=assignments['hl'],
-            hidden_layer_size=assignments['hls'],
-            batch_size=assignments['bs']
-            )
-        
-        dqn_agent.train(max_episodes=assignments['me'])
-        value_dicts.append(dqn_agent.test())
-        
+        hidden_layers = assignments['hl']
+        hidden_layer_size = assignments['hls'] 
+        learning_rate = assignments['lr'] #learning rate for Adam optimizer
+        batch_size = assignments['bs'] 
+        decay_rate = assignments['dr'] #decay rate for Adam optimizer
+        gamma = assignments['g'] #discount factor
+
+        average_score, episodes, DQNAgent = play_game(env, max_episodes, hidden_layers, hidden_layer_size, learning_rate, batch_size, decay_rate, gamma)
+        test_reward = test(env, DQNAgent)
+
+        value_dicts = [dict(name='test_reward', value=test_reward), dict(name='final_episode', value=episodes)]
+        env.close()
+
         conn.experiments(experiment.id).observations().create(suggestion=suggestion.id,values=value_dicts)
     
         #update experiment object
@@ -403,4 +202,3 @@ def main():
 
 if __name__ == "__main__":
     main() 
-   
