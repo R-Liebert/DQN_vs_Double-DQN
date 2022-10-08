@@ -186,7 +186,7 @@ def main():
     If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
     
     """
-    sigopt_token = "###############################" # Insert your API token here.
+    sigopt_token = "UDTVDVHKBTRMWMWZOFZQIJBTCEQBTWOPDZXPVIFBSNEYPDTA" # Insert your API token here.
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:

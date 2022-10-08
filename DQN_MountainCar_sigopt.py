@@ -242,7 +242,7 @@ def main():
             if episode % 100 == 0 and episode != 0:
                 print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}")
             # Check if last 100 episodes have total_reward >= 195 to approve training
-            if episode >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] > -100):
+            if episode >= 100 and avg_rewards > -100:
                 final_episode = episode
                 print(f"You solved it in {final_episode} episodes!")
                 break

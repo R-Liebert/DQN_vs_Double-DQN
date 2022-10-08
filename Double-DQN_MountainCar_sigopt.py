@@ -238,7 +238,7 @@ def main():
         summary_writer = tf.summary.create_file_writer(log_dir)
         TrainNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
         TargetNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
-        max_episodes = 2000
+        max_episodes = 1000
         total_rewards = np.empty(max_episodes)
         epsilon = 1
         decay = 0.99
@@ -255,7 +255,7 @@ def main():
             if episode % 100 == 0 and episode != 0:
                 print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}, episode loss: {losses}")
             # Check if last 100 episodes have total_reward >= 195 to approve training
-            if episode >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] > -100):
+            if episode >= 100 and avg_rewards > -110:
                 final_episode = episode
                 print(f"You solved it in {final_episode} episodes!")
                 break
