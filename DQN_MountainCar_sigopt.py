@@ -95,6 +95,26 @@ class DQN:
     def predict(self, inputs):
         return self.model(np.atleast_2d(inputs.astype('float32')))
 
+    def train(self, TrainNet):
+        if len(self.experience['s']) < self.min_experiences:
+            return 0
+        ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
+        states = np.asarray([self.experience['s'][i] for i in ids])
+        actions = np.asarray([self.experience['a'][i] for i in ids])
+        rewards = np.asarray([self.experience['r'][i] for i in ids])
+        states_next = np.asarray([self.experience['s2'][i] for i in ids])
+        dones = np.asarray([self.experience['done'][i] for i in ids])
+        value_next = np.max(TrainNet.predict(states_next), axis=1)
+        actual_values = np.where(dones, rewards, rewards+self.gamma*value_next)
+
+        with tf.GradientTape() as tape:
+            selected_action_values = tf.math.reduce_sum(
+                self.predict(states) * tf.one_hot(actions, self.num_actions), axis=1)
+            loss = tf.math.reduce_mean(tf.square(actual_values - selected_action_values))
+        variables = self.model.trainable_variables
+        gradients = tape.gradient(loss, variables)
+        self.optimizer.apply_gradients(zip(gradients, variables))
+        return loss
 
     def get_action(self, states, epsilon):
         valid_actions = [a for a in range(self.num_actions)] 
@@ -182,7 +202,7 @@ def main():
             # Memory growth must be set before GPUs have been initialized
             print(e)
 
-    os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
+    #os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
     conn, experiment = setup_connection(api_token=sigopt_token)
 
 
@@ -200,6 +220,7 @@ def main():
         hidden_units = assignments["hls"]
         hidden_layers = assignments["hl"]
         max_experiences = 10000
+        min_experiences = 100
         batch_size = assignments["bs"]
         lr = assignments["lr"]
         decay_rate = assignments["dr"]
