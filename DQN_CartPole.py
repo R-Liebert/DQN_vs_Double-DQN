@@ -168,7 +168,6 @@ def main():
     env._max_episode_steps = max_steps
 
     gamma = 0.95 
-    copy_step = 25
     num_states = len(env.observation_space.sample())
     num_actions = env.action_space.n
     hidden_units = 2
@@ -189,7 +188,7 @@ def main():
     min_epsilon = 0.1
     for episode in range(max_episodes):
         epsilon = max(min_epsilon, epsilon * decay)
-        total_reward = play_game(env, TrainNet, epsilon, copy_step)
+        total_reward = play_game(env, TrainNet, epsilon)
         total_rewards[episode]  = total_reward
         avg_rewards = np.mean(total_rewards[max(0, episode - 100):(episode + 1)])
         with summary_writer.as_default():
