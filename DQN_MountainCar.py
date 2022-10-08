@@ -82,12 +82,6 @@ class DQN:
         for key, value in exp.items():
             self.experience[key].append(value)
 
-    def copy_weights(self, TrainNet):
-        variables1 = self.model.trainable_variables
-        variables2 = TrainNet.model.trainable_variables
-        for v1, v2 in zip(variables1, variables2):
-            v1.assign(v2.numpy())
-
 
 def play_game(env, TrainNet, epsilon, copy_step):
     rewards = 0
