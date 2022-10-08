@@ -123,7 +123,7 @@ def play_game(env, TrainNet, TargetNet, epsilon, copy_step):
         if done or truncated:
             env.reset()
             if truncated:
-                rewards = -100
+                rewards = -500
 
         exp = {'s': prev_observations, 'a': action, 'r': reward, 's2': observations, 'done': done}
         TrainNet.add_experience(exp)
@@ -150,7 +150,7 @@ def test(env, TrainNet):
         steps += 1
         rewards += reward
     
-    rewards = -100 if truncated==True else rewards 
+    rewards = -500 if truncated==True else rewards 
 
     return rewards
 
