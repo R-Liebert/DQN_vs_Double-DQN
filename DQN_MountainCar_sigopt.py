@@ -141,9 +141,8 @@ class DQN:
             v1.assign(v2.numpy())
 
 
-def play_game(env, TrainNet, epsilon, copy_step):
+def play_game(env, TrainNet, epsilon):
     rewards = 0
-    iter = 0
     done = False
     truncated = False
     observations, _ = env.reset()
@@ -159,7 +158,7 @@ def play_game(env, TrainNet, epsilon, copy_step):
 
         exp = {'s': prev_observations, 'a': action, 'r': reward, 's2': observations, 'done': done}
         TrainNet.add_experience(exp)
-
+        TrainNet.train(TrainNet)
 
     return rewards
 

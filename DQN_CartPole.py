@@ -82,7 +82,6 @@ class DQN:
         variables = self.model.trainable_variables
         gradients = tape.gradient(loss, variables)
         self.optimizer.apply_gradients(zip(gradients, variables))
-        return loss
 
 
     def get_action(self, states, epsilon):
@@ -99,9 +98,8 @@ class DQN:
             self.experience[key].append(value)
 
 
-def play_game(env, TrainNet, epsilon, copy_step):
+def play_game(env, TrainNet, epsilon):
     rewards = 0
-    iter = 0
     done = False
     truncated = False
     observations, _ = env.reset()
@@ -117,7 +115,7 @@ def play_game(env, TrainNet, epsilon, copy_step):
 
         exp = {'s': prev_observations, 'a': action, 'r': reward, 's2': observations, 'done': done}
         TrainNet.add_experience(exp)
-
+        TrainNet.train(TrainNet)
 
     return rewards
 
