@@ -52,7 +52,7 @@ class DQNSolver:
     def __init__(self, num_states, action_space, hidden_layers, hidden_layer_size, learning_rate, batch_size, decay_rate, gamma):
         self.epsilon = 1
         self.min_epsilon = 0.01
-        self.epsilon_decay = 0.999
+        self.epsilon_decay = 0.99
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.decay_rate = decay_rate
