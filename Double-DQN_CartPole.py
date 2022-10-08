@@ -214,7 +214,8 @@ def main():
             tf.summary.scalar('average loss)', losses, step=episode)
         #if episode % 100 == 0:
             #print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}, episode loss: {losses}")
-        if all(i >= 195 for i in total_rewards[max(0,episode- 100):(episode+ 1)]): # Check if last 100 episodes have reward >= 195 to approve training
+        # Check if last 100 episodes have total_reward >= 195 to approve training
+        if episode >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] >= 195):
             final_episode = episode
             print(f"You solved it in {final_episode} episodes!")
             break

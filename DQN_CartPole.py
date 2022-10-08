@@ -61,7 +61,7 @@ def play_game(env, max_episodes=1000, hidden_layers=1, hidden_layer_size=24, lea
     num_actions = env.action_space.n
     dqn_solver = DQNSolver(num_states, num_actions, hidden_layers, hidden_layer_size, learning_rate, batch_size, decay_rate, gamma)
 
-    steps = []
+    total_rewards = []
     for episode in range(max_episodes):
         state, _ = env.reset()
         state = np.reshape(state, [1, env.observation_space.shape[0]])
@@ -82,30 +82,30 @@ def play_game(env, max_episodes=1000, hidden_layers=1, hidden_layer_size=24, lea
                 print (f"terminated after: {episode} episodes, exploration: {dqn_solver.epsilon}, score: {step}" )
                 if truncated:
                     step = 500
-                steps.append(step)
 
-            if len(steps) > 100:
-                if all(i >= 195 for i in steps[max(0, episode - 100):(episode + 1)]): 
-                    print(f"Environment solved in {episode} episodes, exploration: {dqn_solver.epsilon}, score: {step}")
-                    return np.mean(steps[-100:]), episode, dqn_solver
-            if not episode == 0 and episode % 10 == 0:
-                dqn_solver.experience_replay()
+        total_rewards.append(step)
+        if step >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] >= 195):
+                print(f"Environment solved in {episode} episodes, exploration: {dqn_solver.epsilon}, score: {step}")
+                return np.mean(total_rewards[-100:]), episode, dqn_solver
+        if not episode == 0 and episode % 10 == 0:
+            dqn_solver.experience_replay()
 
-        print (f"Episodes: {episode}, average score last hundred episodes: {np.mean(steps[-100:])}" )
+        total_rewards.append(step)
+        print (f"Episodes: {episode}, average score last hundred episodes: {np.mean(total_rewards[-100:])}" )
 
     print ("Done")
-    return np.mean(steps[-100:]), episode, dqn_solver
+    return np.mean(total_rewards[-100:]), episode, dqn_solver
 
 def test(env, model):
     rewards = 0
-    steps = 0
+    total_rewards = 0
     done = False
     truncated = False
     observation, _ = env.reset()
     while not done and not truncated:
         action = model.act(observation)
         observation, reward, done, truncated, _= env.step(action)
-        steps += 1
+        total_rewards += 1
         rewards += reward
     
     rewards = 500 if truncated==True else rewards 
