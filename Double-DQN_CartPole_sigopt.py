@@ -193,7 +193,7 @@ def main():
     
     You can find your API token at https://sigopt.com/user/tokens
     """
-    sigopt_token = "UDTVDVHKBTRMWMWZOFZQIJBTCEQBTWOPDZXPVIFBSNEYPDTA" # Insert your API token here.
+    sigopt_token = "###############################" # Insert your API token here.
     
 
     gpus = tf.config.experimental.list_physical_devices('GPU')

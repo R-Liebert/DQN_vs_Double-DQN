@@ -27,7 +27,6 @@ This is the Double-DQN script from OpenAI Baseline which has been modified to wo
 And edited to be a vanilla DQN. Sigopt is used to tune the hyperparameters.
 
 '''
-
 def setup_connection(api_token):
     """
     Setup Sigopt connection.
@@ -43,7 +42,7 @@ def setup_connection(api_token):
     conn = Connection(client_token=api_token)
 
     experiment = conn.experiments().create(
-        name="Double-DQN optimization (Acrobot-v1)",
+        name="DQN optimization (Acrobot-v1)",
         type="offline",
         parameters=[
             dict(name='hl', type='int', bounds=dict(min=1, max=3)), # hidden layers 
@@ -96,26 +95,6 @@ class DQN:
     def predict(self, inputs):
         return self.model(np.atleast_2d(inputs.astype('float32')))
 
-    def train(self, TargetNet):
-        if len(self.experience['s']) < self.min_experiences:
-            return 0
-        ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
-        states = np.asarray([self.experience['s'][i] for i in ids])
-        actions = np.asarray([self.experience['a'][i] for i in ids])
-        rewards = np.asarray([self.experience['r'][i] for i in ids])
-        states_next = np.asarray([self.experience['s2'][i] for i in ids])
-        dones = np.asarray([self.experience['done'][i] for i in ids])
-        value_next = np.max(TargetNet.predict(states_next), axis=1)
-        actual_values = np.where(dones, rewards, rewards+self.gamma*value_next)
-
-        with tf.GradientTape() as tape:
-            selected_action_values = tf.math.reduce_sum(
-                self.predict(states) * tf.one_hot(actions, self.num_actions), axis=1)
-            loss = tf.math.reduce_mean(tf.square(actual_values - selected_action_values))
-        variables = self.model.trainable_variables
-        gradients = tape.gradient(loss, variables)
-        self.optimizer.apply_gradients(zip(gradients, variables))
-        return loss
 
     def get_action(self, states, epsilon):
         valid_actions = [a for a in range(self.num_actions)] 
@@ -142,13 +121,12 @@ class DQN:
             v1.assign(v2.numpy())
 
 
-def play_game(env, TrainNet, TargetNet, epsilon, copy_step):
+def play_game(env, TrainNet, epsilon, copy_step):
     rewards = 0
     iter = 0
     done = False
     truncated = False
     observations, _ = env.reset()
-    losses = list()
     while not done and not truncated:
         action = TrainNet.get_action(observations, epsilon)
         prev_observations = observations
@@ -161,16 +139,9 @@ def play_game(env, TrainNet, TargetNet, epsilon, copy_step):
 
         exp = {'s': prev_observations, 'a': action, 'r': reward, 's2': observations, 'done': done}
         TrainNet.add_experience(exp)
-        loss = TrainNet.train(TargetNet)
-        if isinstance(loss, int):
-            losses.append(loss)
-        else:
-            losses.append(loss.numpy())
-        iter += 1
-        if iter % copy_step == 0:
-            TargetNet.copy_weights(TrainNet)
 
-    return rewards, np.mean(losses)
+
+    return rewards
 
 def test(env, TrainNet):
     rewards = 0
@@ -212,7 +183,7 @@ def main():
 
     os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
     conn, experiment = setup_connection(api_token=sigopt_token)
-    
+
 
     for _ in range(experiment.observation_budget):
         value_dicts = []
@@ -237,29 +208,27 @@ def main():
         log_dir = 'logs/dqn/' + current_time
         summary_writer = tf.summary.create_file_writer(log_dir)
         TrainNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
-        TargetNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
-        max_episodes = 2000
+        max_episodes = 1000
         total_rewards = np.empty(max_episodes)
         epsilon = 1
         decay = 0.99
         min_epsilon = 0.1
         for episode in range(max_episodes):
             epsilon = max(min_epsilon, epsilon * decay)
-            total_reward, losses = play_game(env, TrainNet, TargetNet, epsilon, copy_step)
+            total_reward = play_game(env, TrainNet, epsilon, copy_step)
             total_rewards[episode]  = total_reward
             avg_rewards = np.mean(total_rewards[max(0, episode - 100):(episode + 1)])
             with summary_writer.as_default():
                 tf.summary.scalar('episode reward', total_reward, step=episode)
                 tf.summary.scalar('running avg reward(100)', avg_rewards, step=episode)
-                tf.summary.scalar('average loss)', losses, step=episode)
             if episode % 100 == 0 and episode != 0:
-                print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}, episode loss: {losses}")
+                print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}")
             # Check if last 100 episodes have total_reward >= 195 to approve training
             if episode >= 100 and all(total_rewards[max(0, episode - 100):(episode + 1)] > -100):
                 final_episode = episode
                 print(f"You solved it in {final_episode} episodes!")
                 break
-            
+        
         # if final_episode doesn't exist set too max episodes.
         final_episode = final_episode if 'final_episode' in locals() else max_episodes
 
@@ -276,6 +245,7 @@ def main():
     assignments = conn.experiments(experiment.id).best_assignments().fetch().data[0].assignments # get best assignments
 
     print("BEST ASSIGNMENTS FOUND: \n", assignments)
+
 
 
 if __name__ == "__main__":
