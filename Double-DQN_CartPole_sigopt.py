@@ -12,6 +12,8 @@ import gym
 from gym import wrappers
 
 import os
+import sigopt
+from sigopt import Connection
 
 
 '''
@@ -26,6 +28,38 @@ This is the Double-DQN script from OpenAI Baseline which has been modified to wo
 And edited to be a vanilla DQN. Sigopt is used to tune the hyperparameters.
 
 '''
+def setup_connection(api_token):
+    """
+    Setup Sigopt connection.
+    Set a experiment name.
+
+    Arguments:
+    api_token: Sigopt API token
+    You can find your API token at https://sigopt.com/user/tokens
+    max_episodes: int 
+    Maximum number of episodes to run
+    """
+    
+    conn = Connection(client_token=api_token)
+
+    experiment = conn.experiments().create(
+        name="Double-DQN optimization (CartPole-v1)",
+        type="offline",
+        parameters=[
+            dict(name='hl', type='int', bounds=dict(min=1, max=3)), # hidden layers 
+            dict(name='hls', type='int', bounds=dict(min=12, max=48)), # hidden layer size
+            dict(name='lr', type='double', bounds=dict(min=1e-5, max=1e-1)), # learning rate
+            dict(name='bs', type='int', bounds=dict(min=16, max=64)), # batch size
+            dict(name='dr', type='double', bounds=dict(min=0.9, max=0.999)), # decay rate
+            dict(name='g', type='double', bounds=dict(min=0.8, max=0.99)) # gamma
+            ],
+            metrics=[dict(name='test_reward', objective='maximize'), dict(name='final_episode', objective='minimize')],
+            parallel_bandwidth=1,
+            observation_budget=60,
+            )
+        
+    print("Explore your experiment: https://app.sigopt.com/experiment/" + experiment.id + "/analysis")
+    return conn, experiment
 
 
 class MyModel(tf.keras.Model):
@@ -157,7 +191,10 @@ def main():
     If you want to load a model, uncomment the load_model line.
     If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
     
+    You can find your API token at https://sigopt.com/user/tokens
     """
+    sigopt_token = "UDTVDVHKBTRMWMWZOFZQIJBTCEQBTWOPDZXPVIFBSNEYPDTA" # Insert your API token here.
+    
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
@@ -172,61 +209,70 @@ def main():
             print(e)
 
     os.environ["CUDA_VISIBLE_DEVICES"]="0"  # use GPU with ID=0 (uncomment if GPU is available)
-
-
-
-    value_dicts = []
-    env = gym.make('CartPole-v1')
-
-
-    max_steps = 500 # Environment max step
-    env._max_episode_steps = max_steps
-
-    gamma = 0.95 
-    copy_step = 25
-    num_states = len(env.observation_space.sample())
-    num_actions = env.action_space.n
-    hidden_units = 2
-    hidden_layers = 24
-    max_experiences = 10000
-    min_experiences = 100
-    batch_size = 32
-    lr = 1e-3
-    decay_rate = 0.95
-    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = 'logs/dqn/' + current_time
-    summary_writer = tf.summary.create_file_writer(log_dir)
-    TrainNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
-    TargetNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
-    max_episodes = 2000
-    total_rewards = np.empty(max_episodes)
-    epsilon = 1
-    decay = 0.999
-    min_epsilon = 0.1
-    for episode in range(max_episodes):
-        epsilon = max(min_epsilon, epsilon * decay)
-        total_reward, losses = play_game(env, TrainNet, TargetNet, epsilon, copy_step)
-        total_rewards[episode]  = total_reward
-        avg_rewards = np.mean(total_rewards[max(0, episode - 100):(episode + 1)])
-        with summary_writer.as_default():
-            tf.summary.scalar('episode reward', total_reward, step=episode)
-            tf.summary.scalar('running avg reward(100)', avg_rewards, step=episode)
-            tf.summary.scalar('average loss)', losses, step=episode)
-        #if episode % 100 == 0:
-            #print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}, episode loss: {losses}")
-        if all(i >= 195 for i in total_rewards[max(0,episode- 100):(episode+ 1)]): # Check if last 100 episodes have reward >= 195 to approve training
-            final_episode = episode
-            print(f"You solved it in {final_episode} episodes!")
-            break
-        
-    # if final_episode doesn't exist set too max episodes.
-    final_episode = final_episode if 'final_episode' in locals() else max_episodes
-
-    test_reward = test(env, TrainNet)
+    conn, experiment = setup_connection(api_token=sigopt_token)
     
-    print(f"Test reward: {test_reward}, avgerage reward last 100 episodes: {avg_rewards}, num episodes: {final_episode}")
-    env.close()
 
+    for _ in range(experiment.observation_budget):
+        value_dicts = []
+        env = gym.make('CartPole-v1')
+        suggestion = conn.experiments(experiment.id).suggestions().create()
+        assignments = suggestion.assignments
+        max_steps = 500
+        env._max_episode_steps = max_steps
+
+        gamma = assignments['g']
+        copy_step = 25
+        num_states = len(env.observation_space.sample())
+        num_actions = env.action_space.n
+        hidden_units = assignments["hls"]
+        hidden_layers = assignments["hl"]
+        max_experiences = 10000
+        min_experiences = 100
+        batch_size = assignments["bs"]
+        lr = assignments["lr"]
+        decay_rate = assignments["dr"]
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        log_dir = 'logs/dqn/' + current_time
+        summary_writer = tf.summary.create_file_writer(log_dir)
+        TrainNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
+        TargetNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
+        max_episodes = 2000
+        total_rewards = np.empty(max_episodes)
+        epsilon = 1
+        decay = 0.999
+        min_epsilon = 0.1
+        for episode in range(max_episodes):
+            epsilon = max(min_epsilon, epsilon * decay)
+            total_reward, losses = play_game(env, TrainNet, TargetNet, epsilon, copy_step)
+            total_rewards[episode]  = total_reward
+            avg_rewards = np.mean(total_rewards[max(0, episode - 100):(episode + 1)])
+            with summary_writer.as_default():
+                tf.summary.scalar('episode reward', total_reward, step=episode)
+                tf.summary.scalar('running avg reward(100)', avg_rewards, step=episode)
+                tf.summary.scalar('average loss)', losses, step=episode)
+            #if episode % 100 == 0:
+                #print(f"episode: {episode}, episode reward: {total_reward}, eps: {epsilon}, avg reward (last 100): {avg_rewards}, episode loss: {losses}")
+            if all(i >= 195 for i in total_rewards[max(0,episode- 100):(episode+ 1)]): # Check if last 100 episodes have reward >= 195 to approve training
+                final_episode = episode
+                print(f"You solved it in {final_episode} episodes!")
+                break
+        
+        # if final_episode doesn't exist set too N.
+        final_episode = final_episode if 'final_episode' in locals() else max_episodes
+
+        print("avg reward for last 100 episodes:", avg_rewards)
+        test_reward = test(env, TrainNet)
+        value_dicts = [dict(name='test_reward', value=test_reward), dict(name='final_episode', value=final_episode)]
+        env.close()
+        
+        conn.experiments(experiment.id).observations().create(suggestion=suggestion.id,values=value_dicts)
+    
+        #update experiment object
+        experiment = conn.experiments(experiment.id).fetch()
+
+    assignments = conn.experiments(experiment.id).best_assignments().fetch().data[0].assignments # get best assignments
+
+    print("BEST ASSIGNMENTS FOUND: \n", assignments)
 
 
 if __name__ == "__main__":
