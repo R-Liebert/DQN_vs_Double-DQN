@@ -52,7 +52,7 @@ def setup_connection(api_token):
             dict(name='dr', type='double', bounds=dict(min=0.9, max=0.999)), # decay rate
             dict(name='g', type='double', bounds=dict(min=0.8, max=0.99)) # gamma
             ],
-            metrics=[dict(name='test_reward', objective='minimize'), dict(name='final_episode', objective='minimize')],
+            metrics=[dict(name='test_reward', objective='minimize')],
             parallel_bandwidth=1,
             observation_budget=60,
             )
@@ -233,7 +233,7 @@ def main():
 
         print("avg reward for last 100 episodes:", avg_rewards)
         test_reward = test(env, TrainNet)
-        value_dicts = [dict(name='test_reward', value=np.abs(test_reward)), dict(name='final_episode', value=final_episode)]
+        value_dicts = [dict(name='test_reward', value=np.abs(test_reward))]
         env.close()
         
         conn.experiments(experiment.id).observations().create(suggestion=suggestion.id,values=value_dicts)
