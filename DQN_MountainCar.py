@@ -13,22 +13,42 @@ from gym import wrappers
 
 import os
 
-
 '''
 Original paper: https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf
 - DQN model with Dense layers only
-- Model input is changed to take current and n previous states where n = time_steps
 - Multiple states are concatenated before given to the model
 - Uses target model for more stable training
 - More states was shown to have better performance for CartPole env
 
-This is the Double-DQN script from OpenAI Baseline which has been modified to work with the updated CartPole-v0 environment.
-And edited to be a vanilla DQN. Sigopt is used to tune the hyperparameters.
-
+This is based on the Double-DQN script from https://github.com/VXU1230/Medium-Tutorials/blob/master/dqn/cart_pole.py which has been modified to work with 
+the updated MountainCar-v0 environment and edited to be a DQN. There has also been some changes to how rewards are calculated upon truncation.
+Early termination has been added to the training loop based on the Gym Wiki's definition of the task to be solved. 
+Several other changes have been made to the code, like easier change of NN depth and width and conversion to f-strings.
+Sigopt has been added to the code to optimize the hyperparameters.
 '''
 
-
 class MyModel(tf.keras.Model):
+    """
+    In the call method, we define the forward pass of the model.
+    The model can be given a width and depth, inputs shape , output shape and learning rate.
+
+    Arguments:
+    ----------
+    num_states: int
+        The number of states in the environment
+    hidden_units: int
+        The number of hidden units in the model
+    hidden_layers: int
+        The number of hidden layers in the model
+    num_actions: int
+        The number of actions in the environment
+    lr: float
+        The learning rate of the model
+
+    Returns:
+    --------
+    none
+    """
     def __init__(self, num_states, hidden_units, hidden_layers, num_actions, lr):
         super(MyModel, self).__init__()
         self.input_layer = tf.keras.layers.InputLayer(input_shape=(num_states,))
@@ -41,6 +61,19 @@ class MyModel(tf.keras.Model):
         
     @tf.function
     def call(self, inputs):
+        """
+        Simple forward pass of the model
+
+        Arguments:
+        ----------
+        inputs: array
+            The input to the model
+        
+        Returns:
+        --------
+        output: array
+            The output of the model
+        """
         z = self.input_layer(inputs)
         for layer in self.hidden_layers:
             z = layer(z)
@@ -49,6 +82,39 @@ class MyModel(tf.keras.Model):
 
 
 class DQN:
+    """
+    This is the DQN agent that interacts with the environment. It has a memory buffer that stores the past experiences.
+    It also has a the neural network that is used to predict the Q values of the states.
+    
+    Arguments:
+    ----------
+    num_states: int
+        The number of states in the environment
+    num_actions: int
+        The number of actions in the environment
+    hidden_units: int
+        The number of hidden units in the model
+    hidden_layers: int
+        The number of hidden layers in the model
+    gamma: float
+        The discount factor
+    max_experiences: int
+        The maximum number of experiences to store in the memory buffer
+    min_experiences: int
+        The minimum number of experiences to store in the memory buffer before training
+    batch_size: int
+        The number of experiences to sample from the memory buffer for training
+    lr: float
+        The learning rate of the model
+    max_steps: int
+        The maximum number of steps to run the environment for
+    decay_rate: float
+        The decay rate of the learning rate
+    
+    Returns:
+    --------
+    none
+    """
     def __init__(self, num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate):
         self.num_actions = num_actions
         self.batch_size = batch_size
@@ -61,9 +127,34 @@ class DQN:
         self.max_steps = max_steps
 
     def predict(self, inputs):
+        """
+        Predicts the Q values of the states
+        
+        Arguments:
+        ----------
+        inputs: array
+            The states of the environment
+            
+        Returns:
+        --------
+        output: array
+            The Q values of the states
+        """
         return self.model(np.atleast_2d(inputs.astype('float32')))
 
     def train(self, TrainNet):
+        """
+        Trains the model using the experiences in the memory buffer
+        
+        Arguments:
+        ----------
+        TrainNet: keras model
+            The target model
+            
+        Returns:
+        --------
+        none
+        """
         if len(self.experience['s']) < self.min_experiences:
             return 0
         ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
@@ -86,6 +177,21 @@ class DQN:
 
 
     def get_action(self, states, epsilon):
+        """
+        Gets the action to take based on the epsilon greedy policy
+        
+        Arguments:
+        ----------
+        states: array
+            The states of the environment
+        epsilon: float
+            The probability of taking a random action
+            
+        Returns:
+        --------
+        action: int
+            The action to take
+        """
         valid_actions = [a for a in range(self.num_actions)] 
         if np.random.random() < epsilon:
             return np.random.choice(valid_actions)
@@ -97,6 +203,18 @@ class DQN:
                 return np.random.choice(valid_actions)
 
     def add_experience(self, exp):
+        """
+        Adds the experience to the memory buffer
+        
+        Arguments:
+        ----------
+        exp: tuple
+            The experience to add to the memory buffer
+            
+        Returns:
+        --------
+        none
+        """
         if len(self.experience['s']) >= self.max_experiences:
             for key in self.experience.keys():
                 self.experience[key].pop(0)
@@ -105,6 +223,23 @@ class DQN:
 
 
 def play_game(env, TrainNet, epsilon):
+    """
+    Here the interaction between the agent and the environment takes place.
+
+    Arguments:
+    ----------
+    env: gym environment
+        The environment to interact with
+    TrainNet: keras model
+        The target model
+    epsilon: float
+        The probability of taking a random action
+
+    Returns:
+    --------
+    total_reward: float
+        The total reward obtained from the episode
+    """
     rewards = 0
     done = False
     truncated = False
@@ -127,6 +262,21 @@ def play_game(env, TrainNet, epsilon):
     return rewards
 
 def test(env, TrainNet):
+    """
+    Tests the model on the environment
+
+    Arguments:
+    ----------
+    env: gym environment
+        The environment to interact with
+    TrainNet: keras model
+        The target model
+    
+    Returns:
+    --------
+    rewards: int
+        The total reward obtained from the episode
+    """
     rewards = 0
     steps = 0
     done = False
@@ -146,9 +296,12 @@ def test(env, TrainNet):
 def main():
     """
     Here we initialize the environment, agent and train the agent.
-    If you want to load a model, uncomment the load_model line.
-    If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
-    
+    The first part is checking if there is a GPU available.
+    If you have GPU's, you're a lucky bitch, and can uncomment the GPU line.
+
+    First all hyperparameters that should be tuned for optimum performance are set.
+    Then the loop goes until max number of episodes are reached or the environment is solved
+    Last some metrics are printed
     """
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -173,15 +326,15 @@ def main():
     max_steps = 500 # Environment max step
     env._max_episode_steps = max_steps
 
-    gamma = 0.95 
-    num_states = 2 # hardcoded until solved
+    gamma = 0.99 
+    num_states = 4 # hardcoded until solved
     num_actions = 3 # hardcoded until solved
     hidden_units = 2
     hidden_layers = 24
-    max_experiences = 10000
+    max_experiences = 100000
     min_experiences = 100
     batch_size = 32
-    lr = 1e-3
+    lr = 1.5e-1
     decay_rate = 0.95
     current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     log_dir = 'logs/dqn/' + current_time

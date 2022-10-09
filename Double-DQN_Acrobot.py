@@ -28,6 +28,27 @@ And edited to be a vanilla DQN. Sigopt is used to tune the hyperparameters.
 
 
 class MyModel(tf.keras.Model):
+    """
+    In the call method, we define the forward pass of the model.
+    The model can be given a width and depth, inputs shape , output shape and learning rate.
+
+    Arguments:
+    ----------
+    num_states: int
+        The number of states in the environment
+    hidden_units: int
+        The number of hidden units in the model
+    hidden_layers: int
+        The number of hidden layers in the model
+    num_actions: int
+        The number of actions in the environment
+    lr: float
+        The learning rate of the model
+
+    Returns:
+    --------
+    none
+    """
     def __init__(self, num_states, hidden_units, hidden_layers, num_actions, lr):
         super(MyModel, self).__init__()
         self.input_layer = tf.keras.layers.InputLayer(input_shape=(num_states,))
@@ -40,6 +61,19 @@ class MyModel(tf.keras.Model):
         
     @tf.function
     def call(self, inputs):
+        """
+        Simple forward pass of the model
+
+        Arguments:
+        ----------
+        inputs: array
+            The input to the model
+        
+        Returns:
+        --------
+        output: array
+            The output of the model
+        """
         z = self.input_layer(inputs)
         for layer in self.hidden_layers:
             z = layer(z)
@@ -48,6 +82,41 @@ class MyModel(tf.keras.Model):
 
 
 class DQN:
+    """
+    DQN agent with target model and experience replay
+    The DQN agent that interacts with the environment. It has a memory buffer that stores the past experiences.
+    It also has a the neural network that is used to predict the Q values of the states.
+    
+    Arguments:
+    ----------
+    num_states: int
+        The number of states in the environment
+    num_actions: int
+        The number of actions in the environment
+    hidden_units: int
+        The number of hidden units in the model
+    hidden_layers: int
+        The number of hidden layers in the model
+    gamma: float
+        The discount factor
+    max_experiences: int
+        The maximum number of experiences to store in the memory buffer
+    min_experiences: int
+        The minimum number of experiences to store in the memory buffer before training
+    batch_size: int
+        The number of experiences to sample from the memory buffer for training
+    lr: float
+        The learning rate of the model
+    max_steps: int
+        The maximum number of steps to run the environment for
+    decay_rate: float
+        The decay rate of the learning rate
+    
+    
+    Returns:
+    --------
+    none
+    """
     def __init__(self, num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate):
         self.num_actions = num_actions
         self.batch_size = batch_size
@@ -60,9 +129,35 @@ class DQN:
         self.max_steps = max_steps
 
     def predict(self, inputs):
+        """
+        Predicts the Q values of the states
+        
+        Arguments:
+        ----------
+        inputs: array
+            The states of the environment
+            
+        Returns:
+        --------
+        output: array
+            The Q values of the states
+        """
         return self.model(np.atleast_2d(inputs.astype('float32')))
 
     def train(self, TargetNet):
+        """
+        Trains the model using the experiences in the memory buffer
+        
+        Arguments:
+        ----------
+        TrainNet: keras model
+            The target model
+            
+        Returns:
+        --------
+        loss: float
+            The loss of the model
+        """
         if len(self.experience['s']) < self.min_experiences:
             return 0
         ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
@@ -84,6 +179,21 @@ class DQN:
         return loss
 
     def get_action(self, states, epsilon):
+        """
+        Gets the action to take based on the epsilon greedy policy
+        
+        Arguments:
+        ----------
+        states: array
+            The states of the environment
+        epsilon: float
+            The probability of taking a random action
+            
+        Returns:
+        --------
+        action: int
+            The action to take
+        """
         valid_actions = [a for a in range(self.num_actions)] 
         if np.random.random() < epsilon:
             return np.random.choice(valid_actions)
@@ -95,6 +205,18 @@ class DQN:
                 return np.random.choice(valid_actions)
 
     def add_experience(self, exp):
+        """
+        Adds the experience to the memory buffer
+        
+        Arguments:
+        ----------
+        exp: tuple
+            The experience to add to the memory buffer
+            
+        Returns:
+        --------
+        none
+        """
         if len(self.experience['s']) >= self.max_experiences:
             for key in self.experience.keys():
                 self.experience[key].pop(0)
@@ -102,6 +224,18 @@ class DQN:
             self.experience[key].append(value)
 
     def copy_weights(self, TrainNet):
+        """
+        Copies the weights of the model to the target model
+        
+        Arguments:
+        ----------
+        TrainNet: keras model
+            The target model
+            
+        Returns:
+        --------
+        none
+        """
         variables1 = self.model.trainable_variables
         variables2 = TrainNet.model.trainable_variables
         for v1, v2 in zip(variables1, variables2):
@@ -109,6 +243,26 @@ class DQN:
 
 
 def play_game(env, TrainNet, TargetNet, epsilon, copy_step):
+    """
+    Here the interaction between the agent and the environment takes place.
+    The agent takes an action, the environment returns the next state, reward and done.
+    The agent then adds the experience to the memory buffer and trains the model.
+    The target model is updated every copy_step.
+
+    Arguments:
+    ----------
+    env: gym environment
+        The environment to interact with
+    TrainNet: keras model
+        The target model
+    epsilon: float
+        The probability of taking a random action
+
+    Returns:
+    --------
+    total_reward: float
+        The total reward obtained from the episode
+    """
     rewards = 0
     iter = 0
     done = False
@@ -139,6 +293,23 @@ def play_game(env, TrainNet, TargetNet, epsilon, copy_step):
     return rewards, np.mean(losses)
 
 def test(env, TrainNet):
+    """
+    Tests the model on the environment
+
+    Arguments:
+    ----------
+    env: gym environment
+        The environment to interact with
+    TrainNet: keras model
+        The target model
+    
+    Returns:
+    --------
+    rewards: int
+        The total reward obtained from the episode
+    mean_loss: float
+        The mean loss of the model
+    """
     rewards = 0
     steps = 0
     done = False
@@ -158,9 +329,12 @@ def test(env, TrainNet):
 def main():
     """
     Here we initialize the environment, agent and train the agent.
-    If you want to load a model, uncomment the load_model line.
-    If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
-    
+    The first part is checking if there is a GPU available.
+    If you have GPU's, you're a lucky bitch, and can uncomment the GPU line.
+
+    First all hyperparameters that should be tuned for optimum performance are set.
+    Then the loop goes until max number of episodes are reached or the environment is solved
+    Last some metrics are printed
     """
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
