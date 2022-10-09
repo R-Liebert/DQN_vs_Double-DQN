@@ -1,7 +1,5 @@
-import random
 import datetime
 import numpy as np
-from gym import wrappers
 
 from collections import deque
 import tensorflow as tf
@@ -9,10 +7,8 @@ from keras import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 import gym
-from gym import wrappers
 
 import os
-import sigopt
 from sigopt import Connection
 
 '''
@@ -53,9 +49,9 @@ def setup_connection(api_token):
             dict(name='dr', type='double', bounds=dict(min=0.9, max=0.999)), # decay rate
             dict(name='g', type='double', bounds=dict(min=0.8, max=0.99)) # gamma
             ],
-            metrics=[dict(name='test_reward', objective='minimize'), dict(name='final_episode', objective='minimize')],
+            metrics=[dict(name='test_reward', objective='minimize')],
             parallel_bandwidth=1,
-            observation_budget=60,
+            observation_budget=30,
             )
         
     print("Explore your experiment: https://app.sigopt.com/experiment/" + experiment.id + "/analysis")
@@ -196,7 +192,7 @@ def main():
     If you have GPU's, you're a lucky bitch, and can uncomment the GPU line
     
     """
-    sigopt_token = "###############################" # Insert your API token here.
+    sigopt_token = "###############################"  # Insert your API token here.
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
@@ -238,7 +234,7 @@ def main():
         summary_writer = tf.summary.create_file_writer(log_dir)
         TrainNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
         TargetNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
-        max_episodes = 2000
+        max_episodes = 1000
         total_rewards = np.empty(max_episodes)
         epsilon = 1
         decay = 0.99
@@ -265,7 +261,7 @@ def main():
 
         print("avg reward for last 100 episodes:", avg_rewards)
         test_reward = test(env, TrainNet)
-        value_dicts = [dict(name='test_reward', value=np.abs(test_reward)), dict(name='final_episode', value=final_episode)]
+        value_dicts = [dict(name='test_reward', value=np.abs(test_reward))]
         env.close()
         
         conn.experiments(experiment.id).observations().create(suggestion=suggestion.id,values=value_dicts)

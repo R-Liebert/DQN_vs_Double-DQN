@@ -1,7 +1,5 @@
-import random
 import datetime
 import numpy as np
-from gym import wrappers
 
 from collections import deque
 import tensorflow as tf
@@ -9,10 +7,8 @@ from keras import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 import gym
-from gym import wrappers
 
 import os
-import sigopt
 from sigopt import Connection
 
 
