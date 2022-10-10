@@ -3,9 +3,10 @@ import numpy as np
 
 from collections import deque
 import tensorflow as tf
-from keras import Sequential
-from keras.layers import Dense
-from keras.optimizers import Adam
+from tensorflow import keras
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.optimizers import Adam
 import gym
 
 import os
@@ -375,7 +376,7 @@ def main():
         log_dir = 'logs/dqn/' + current_time
         summary_writer = tf.summary.create_file_writer(log_dir)
         TrainNet = DQN(num_states, num_actions, hidden_units, hidden_layers, gamma, max_experiences, min_experiences, batch_size, lr, max_steps, decay_rate)
-        max_episodes = 20000
+        max_episodes = 2000
         total_rewards = np.empty(max_episodes)
         epsilon = 1
         decay = 0.99
