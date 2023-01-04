@@ -336,7 +336,7 @@ def main():
     The ones not being tuned must be set. And token must be given.
     """
 
-    sigopt_token = "UDTVDVHKBTRMWMWZOFZQIJBTCEQBTWOPDZXPVIFBSNEYPDTA" # Insert your API token here.
+    sigopt_token = "########################################" # Insert your SigOpt API token here.
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
@@ -407,7 +407,7 @@ def main():
         
         conn.experiments(experiment.id).observations().create(suggestion=suggestion.id,values=value_dicts)
     
-        #update experiment object
+        # update experiment object
         experiment = conn.experiments(experiment.id).fetch()
 
     assignments = conn.experiments(experiment.id).best_assignments().fetch().data[0].assignments # get best assignments
